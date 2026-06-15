@@ -185,6 +185,16 @@ textarea.inp{resize:vertical;min-height:64px}
 .fsec{font-size:12.5px;font-weight:800;color:var(--primary-d);margin:18px 0 9px;border-bottom:1px solid var(--line);padding-bottom:6px}
 .fsec:first-child{margin-top:0}
 .fhint{font-size:11.5px;color:var(--muted);margin-top:5px;font-weight:600}
+.qstep{display:flex;align-items:stretch;gap:6px}
+.qstep .inp{flex:1}
+.qbtn{width:46px;flex:0 0 auto;border:1px solid var(--line);background:var(--surface);border-radius:10px;font-size:21px;font-weight:800;color:var(--primary-d);cursor:pointer;user-select:none;-webkit-user-select:none;touch-action:none}
+.qbtn:active{background:var(--primary-soft)}
+.utable{display:flex;flex-direction:column;gap:6px}
+.urow{display:grid;grid-template-columns:92px 1fr 1fr 1fr;gap:8px;align-items:center}
+.urow-h{font-size:11px;color:var(--muted);font-weight:700}
+.urow .uname{font-weight:700;font-size:13px}
+.urow .ucell-na{color:var(--muted);text-align:center}
+@media(max-width:600px){.urow{grid-template-columns:64px 1fr 1fr 1fr;gap:5px}.urow .inp{padding:7px 7px;font-size:12px}.urow-h{font-size:10px}}
 
 /* Toast */
 .toasts{position:fixed;top:14px;left:0;right:0;bottom:auto;z-index:95;display:flex;flex-direction:column;align-items:center;gap:9px;padding:0 16px;pointer-events:none}
@@ -1054,9 +1064,11 @@ function renderProducts(){
 const UNITS=['قطعة','كرتون','علبة','كيس','متر','متر مربع','كيلو','غرام','لتر','لفة','صندوق','طن','حبة','طقم','زوج','رول'];
 let _curProdUnits=[];
 function editProduct(id){
-  const p=id?DB.products.find(x=>x.id===id):{name:'',code:'',category:DB.categories[0]||'',price:'',wholesale:'',qty:0,minQty:5,desc:'',image:'',priceWholesale:'',priceHalf:'',oldPrice:0,origin:'',expiry:'',shelf:'',notes:'',units:[]};
+  const p=id?DB.products.find(x=>x.id===id):{name:'',nameFr:'',code:'',category:DB.categories[0]||'',price:'',wholesale:'',qty:0,minQty:5,desc:'',image:'',priceWholesale:'',discountPct:'',oldPrice:0,origin:'',expiry:'',shelf:'',notes:'',units:[]};
+  if(!id)p.code=genProductCode();
   _pendingImgs=prodImgs(p).slice();
-  _curProdUnits=(p.units||[]).slice();
+  const _names0=catUnitNames(p.category||DB.categories[0]||'');
+  _curProdUnits=(p.units&&p.units.length)?p.units.slice():_names0.map((nm,i)=>({name:nm,factor:1,cost:i===_names0.length-1?(p.wholesale||0):0,price:i===_names0.length-1?(p.price||0):0}));
   modal({title:id?'تعديل بطاقة المادة':'بطاقة مادة جديدة',size:'lg',body:`
     <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
       <div style="flex:0 0 auto;width:122px">
@@ -1067,9 +1079,11 @@ function editProduct(id){
       <div style="flex:1;min-width:240px">
         <div class="fsec">البيانات الأساسية</div>
         <div class="grid2">
-          <div class="field"><label>اسم المادة *</label><input class="inp" id="f_name" value="${esc(p.name)}"></div>
-          <div class="field"><label>الكود / الباركود</label><div style="display:flex;gap:6px"><input class="inp" id="f_code" value="${esc(p.code)}" style="flex:1">
-            <button class="btn btn-icon btn-sm" title="مسح" onclick="scanBarcode(c=>{document.getElementById('f_code').value=c})">${svg(I.search,16)}</button></div></div>
+          <div class="field"><label>اسم المادة *</label><input class="inp" id="f_name" value="${esc(p.name)}" oninput="autoFr()"></div>
+          <div class="field"><label>الاسم بالفرنسية (تلقائي - يمكن تعديله)</label><input class="inp" id="f_namefr" dir="ltr" value="${esc(p.nameFr||'')}" ${p.nameFr?'data-touched="1"':''} oninput="this.dataset.touched='1'"></div>
+          <div class="field"><label>الكود / الباركود (يُولَّد تلقائياً)</label><div style="display:flex;gap:6px"><input class="inp" id="f_code" value="${esc(p.code)}" style="flex:1">
+            <button class="btn btn-sm" title="توليد كود جديد" onclick="document.getElementById('f_code').value=genProductCode()">توليد</button>
+            <button class="btn btn-icon btn-sm" title="مسح باركود" onclick="scanBarcode(c=>{document.getElementById('f_code').value=c})">${svg(I.search,16)}</button></div></div>
           <div class="field" style="grid-column:1/-1"><label>القسم</label>
             <div style="display:flex;gap:6px"><select class="inp" id="f_cat" style="flex:1" onchange="renderUnitSection()">${DB.categories.map(c=>`<option ${c===p.category?'selected':''}>${esc(c)}</option>`).join('')}</select>
               <button class="btn btn-icon btn-sm" title="قسم جديد" onclick="toggleCatPanel('new')">${svg(I.plus,16)}</button>
@@ -1080,20 +1094,23 @@ function editProduct(id){
         <div class="fsec">الوحدات والأسعار (حسب القسم)</div>
         <div id="unitSection"></div>
         <datalist id="unitList">${UNITS.map(u=>`<option value="${u}">`).join('')}</datalist>
-
-        <div class="fsec">الأسعار (الوحدة الصغرى)</div>
-        <div class="grid2">
-          <div class="field"><label>سعر التكلفة (الشراء)</label><input class="inp" id="f_cost" type="number" step="any" value="${p.wholesale}" oninput="updateMargin()"></div>
-          <div class="field"><label>سعر المفرد (البيع) *</label><input class="inp" id="f_price" type="number" step="any" value="${p.price}" oninput="updateMargin()"></div>
-          <div class="field"><label>سعر الجملة</label><input class="inp" id="f_pw" type="number" step="any" value="${p.priceWholesale||''}"></div>
-          <div class="field"><label>سعر نصف الجملة</label><input class="inp" id="f_ph" type="number" step="any" value="${p.priceHalf||''}"></div>
-          <div class="field" style="grid-column:1/-1"><label>السعر قبل الخصم (للعرض في المتجر، اختياري)</label><input class="inp" id="f_old" type="number" step="any" value="${p.oldPrice||''}" placeholder="اتركه فارغاً إن لا يوجد خصم"></div>
-        </div>
         <div id="f_margin" style="margin-top:10px;border-radius:10px;padding:9px 13px;font-size:13px;font-weight:700;display:none"></div>
+
+        <div class="fsec">الخصم والجملة</div>
+        <div class="grid2">
+          <div class="field"><label>نسبة الخصم % (اختياري)</label><input class="inp" id="f_disc" type="number" step="any" value="${p.discountPct||''}" placeholder="مثال: 20" oninput="updateAfterDisc()"></div>
+          <div class="field"><label>سعر البيع بالجملة</label><input class="inp" id="f_pw" type="number" step="any" value="${p.priceWholesale||''}"></div>
+        </div>
+        <div id="f_after" style="margin-top:8px;font-size:13px;font-weight:700;color:var(--primary-d)"></div>
 
         <div class="fsec">المخزون</div>
         <div class="grid2">
-          <div class="field"><label>الكمية المتوفرة (بالوحدة الصغرى)</label><input class="inp" id="f_qty" type="number" step="any" value="${p.qty}"></div>
+          <div class="field"><label>الكمية المتوفرة (بالوحدة الصغرى)</label>
+            <div class="qstep">
+              <button type="button" class="qbtn" oncontextmenu="return false" onpointerdown="qtyHold('f_qty',-1)" onpointerup="qtyRelease()" onpointerleave="qtyRelease()" onpointercancel="qtyRelease()">−</button>
+              <input class="inp" id="f_qty" type="number" step="any" value="${p.qty}" style="text-align:center">
+              <button type="button" class="qbtn" oncontextmenu="return false" onpointerdown="qtyHold('f_qty',1)" onpointerup="qtyRelease()" onpointerleave="qtyRelease()" onpointercancel="qtyRelease()">+</button>
+            </div></div>
           <div class="field"><label>حد التنبيه (أقل كمية)</label><input class="inp" id="f_min" type="number" step="any" value="${p.minQty}"></div>
         </div>
 
@@ -1109,19 +1126,21 @@ function editProduct(id){
     <div class="fsec">الوصف (يظهر للزبائن في المتجر)</div>
     <div class="field"><textarea class="inp" id="f_desc">${esc(p.desc||'')}</textarea></div>
     ${p.code?`<div style="margin-top:14px;text-align:center;background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px">
-      <div class="muted" style="font-size:12px;margin-bottom:6px">باركود المادة</div>${barcodeSVG(p.code,46)}
-      <div style="margin-top:8px"><button class="btn btn-sm" onclick="printLabel('${id}')">${svg(I.print,15)} طباعة ملصق</button></div></div>`:''}
+      <div class="muted" style="font-size:12px;margin-bottom:6px">باركود المادة: ${esc(p.code)}</div>${barcodeSVG(p.code,46)}
+      ${id?`<div style="margin-top:8px"><button class="btn btn-sm" onclick="printLabel('${id}')">${svg(I.print,15)} طباعة ملصق</button></div>`:''}</div>`:''}
   `,actions:[
     {label:'حفظ',primary:true,fn:()=>{
       const name=val('f_name').trim();
       if(!name){toast('أدخل اسم المادة','err');return false;}
-      const cat=val('f_cat');const names=catUnitNames(cat);const basePrice=parseFloat(val('f_price'))||0;
-      const units=names.map((nm,i)=>{const last=i===names.length-1;
-        return {name:nm,factor:last?1:(parseFloat(val('f_fac'+(i+1)))||0),price:last?basePrice:(parseFloat(val('f_up'+i))||0)};});
-      const data={name,code:val('f_code').trim(),category:cat,
-        units,unit:names[names.length-1],
-        wholesale:parseFloat(val('f_cost'))||0,price:basePrice,
-        priceWholesale:parseFloat(val('f_pw'))||0,priceHalf:parseFloat(val('f_ph'))||0,oldPrice:parseFloat(val('f_old'))||0,
+      const cat=val('f_cat');const names=catUnitNames(cat);const li=names.length-1;
+      const units=names.map((nm,i)=>({name:nm,factor:i<li?(parseFloat(val('f_fac'+(i+1)))||0):1,cost:parseFloat(val('f_ucost'+i))||0,price:parseFloat(val('f_usell'+i))||0}));
+      const baseCost=units[li].cost,baseSell=units[li].price;
+      const disc=parseFloat(val('f_disc'))||0;
+      const finalPrice=disc>0?+(baseSell*(1-disc/100)).toFixed(2):baseSell;
+      let code=val('f_code').trim();if(!code)code=genProductCode();
+      const data={name,nameFr:val('f_namefr').trim(),code,category:cat,units,unit:names[li],
+        wholesale:baseCost,price:finalPrice,oldPrice:disc>0?baseSell:0,discountPct:disc,
+        priceWholesale:parseFloat(val('f_pw'))||0,
         qty:parseFloat(val('f_qty'))||0,minQty:parseFloat(val('f_min'))||0,
         origin:val('f_origin').trim(),expiry:val('f_exp'),shelf:val('f_shelf').trim(),notes:val('f_notes').trim(),
         desc:val('f_desc').trim(),images:_pendingImgs.slice(),image:_pendingImgs[0]||''};
@@ -1131,35 +1150,66 @@ function editProduct(id){
     }},
     {label:'إلغاء',fn:()=>{_pendingImgs=[];return true;}}
   ]});
-  setTimeout(()=>{renderImgStrip();updateMargin();renderUnitSection();},30);
+  setTimeout(()=>{renderImgStrip();renderUnitSection();updateMargin();updateAfterDisc();},40);
+}
+function genProductCode(){let max=100000;DB.products.forEach(p=>{const n=parseInt(p.code,10);if(!isNaN(n)&&n>max)max=n;});return String(max+1);}
+const AR2LAT={'ا':'a','أ':'a','إ':'i','آ':'a','ب':'b','ت':'t','ث':'th','ج':'j','ح':'h','خ':'kh','د':'d','ذ':'dh','ر':'r','ز':'z','س':'s','ش':'ch','ص':'s','ض':'d','ط':'t','ظ':'z','ع':'a','غ':'gh','ف':'f','ق':'q','ك':'k','ل':'l','م':'m','ن':'n','ه':'h','و':'ou','ي':'y','ى':'a','ة':'a','ء':'','ئ':'y','ؤ':'ou','٠':'0','١':'1','٢':'2','٣':'3','٤':'4','٥':'5','٦':'6','٧':'7','٨':'8','٩':'9'};
+function arToLatin(s){
+  if(!s)return '';let out='';
+  for(const ch of s){ if(AR2LAT[ch]!=null)out+=AR2LAT[ch]; else if(/[A-Za-z0-9]/.test(ch))out+=ch; else if(ch===' '||ch==='-')out+=ch; else if('َُِّ ًٌٍْ'.indexOf(ch)>=0){} else out+=''; }
+  out=out.replace(/\s+/g,' ').trim();
+  return out.split(' ').map(w=>w?w.charAt(0).toUpperCase()+w.slice(1):w).join(' ');
+}
+function autoFr(){const fr=document.getElementById('f_namefr');if(!fr)return;if(fr.dataset.touched)return;fr.value=arToLatin(val('f_name'));}
+function pName(p){return (typeof LANG!=='undefined'&&LANG==='fr'&&p.nameFr)?p.nameFr:p.name;}
+let _qTimer=null,_qInt=null;
+function qtyStep(id,dir){const e=document.getElementById(id);if(!e)return;let v=(parseFloat(e.value)||0)+dir;if(v<0)v=0;e.value=v;}
+function qtyHold(id,dir){qtyRelease();qtyStep(id,dir);_qTimer=setTimeout(()=>{_qInt=setInterval(()=>qtyStep(id,dir),110);},420);}
+function qtyRelease(){if(_qTimer)clearTimeout(_qTimer);if(_qInt)clearInterval(_qInt);_qTimer=_qInt=null;}
+function smallestVals(){const names=catUnitNames(val('f_cat'));const li=names.length-1;return {cost:parseFloat(val('f_ucost'+li))||0,sell:parseFloat(val('f_usell'+li))||0};}
+function recalcUnits(){
+  const names=catUnitNames(val('f_cat'));const n=names.length;
+  for(let i=0;i<n-1;i++){
+    const f=parseFloat(val('f_fac'+(i+1)))||0;
+    const c=parseFloat(val('f_ucost'+i)),s=parseFloat(val('f_usell'+i));
+    const ce=document.getElementById('f_ucost'+(i+1)),se=document.getElementById('f_usell'+(i+1));
+    if(f>0){ if(ce&&!isNaN(c))ce.value=+(c/f).toFixed(2); if(se&&!isNaN(s))se.value=+(s/f).toFixed(2); }
+  }
+  updateMargin();updateAfterDisc();
 }
 function updateMargin(){
   const el=document.getElementById('f_margin');if(!el)return;
-  const cost=parseFloat(val('f_cost'))||0,price=parseFloat(val('f_price'))||0;
-  if(price<=0||cost<=0){el.style.display='none';return;}
-  const profit=price-cost,pct=cost>0?profit/cost*100:0,neg=profit<0;
+  const {cost,sell}=smallestVals();
+  if(sell<=0||cost<=0){el.style.display='none';return;}
+  const profit=sell-cost,pct=cost>0?profit/cost*100:0,neg=profit<0;
   el.style.display='block';
   el.style.background=neg?'var(--danger-soft)':'var(--success-soft)';
   el.style.color=neg?'var(--danger)':'var(--success)';
-  el.innerHTML=`هامش الربح للوحدة: <span class="t-num">${money(profit)} ${CUR()}</span> · النسبة: <span class="t-num">${pct.toFixed(1)}%</span>`;
+  el.innerHTML=`هامش ربح الوحدة الصغرى: <span class="t-num">${money(profit)} ${CUR()}</span> · النسبة: <span class="t-num">${pct.toFixed(1)}%</span>`;
+}
+function updateAfterDisc(){
+  const el=document.getElementById('f_after');if(!el)return;
+  const {sell}=smallestVals();const disc=parseFloat(val('f_disc'))||0;
+  if(sell<=0){el.innerHTML='';return;}
+  if(disc>0){const after=+(sell*(1-disc/100)).toFixed(2);el.innerHTML=`السعر بعد الخصم: <span class="t-num">${money(after)} ${CUR()}</span> — يظهر للزبون «خصم ${disc}%»`;}
+  else el.innerHTML=`السعر للزبون: <span class="t-num">${money(sell)} ${CUR()}</span>`;
 }
 function catUnitNames(cat){const c=DB.catUnits&&DB.catUnits[cat];return (c&&c.names&&c.names.length)?c.names.slice():['قطعة'];}
 function renderUnitSection(){
   const sec=document.getElementById('unitSection');if(!sec)return;
-  const names=catUnitNames(val('f_cat'));const u=_curProdUnits;
-  const getP=i=>{const x=u[i];return x&&x.price!=null&&x.price!==''?x.price:'';};
-  const getF=i=>{const x=u[i];return x&&x.factor?x.factor:'';};
-  if(names.length<=1){
-    sec.innerHTML=`<div class="fhint">هذا القسم بوحدة واحدة: <b>${esc(names[0]||'قطعة')}</b> — وسعرها هو «سعر المفرد» في الأسعار بالأسفل.</div>`;return;
-  }
-  let rows='';
-  for(let i=0;i<names.length-1;i++){
-    rows+=`<div class="grid2" style="margin-bottom:6px">
-      <div class="field"><label>سعر الوحدة (${esc(names[i])})</label><input class="inp" id="f_up${i}" type="number" step="any" value="${getP(i)}"></div>
-      <div class="field"><label>كم ${esc(names[i+1])} في ${esc(names[i])}؟</label><input class="inp" id="f_fac${i+1}" type="number" step="any" value="${getF(i)}" placeholder="مثال: 24"></div>
+  const names=catUnitNames(val('f_cat'));const u=_curProdUnits;const li=names.length-1;
+  const gv=(i,k)=>{const x=u[i];const v=x?x[k]:'';return (v==null||v===''||v===0)?'':v;};
+  let rows=`<div class="urow urow-h"><div>الوحدة</div><div>المعامل</div><div>سعر الشراء</div><div>سعر البيع</div></div>`;
+  for(let i=0;i<names.length;i++){
+    const fcell=i<li?`<input class="inp" id="f_fac${i+1}" type="number" step="any" value="${gv(i,'factor')}" placeholder="كم ${esc(names[i+1])}؟" oninput="recalcUnits()">`:`<span class="ucell-na">—</span>`;
+    rows+=`<div class="urow">
+      <div class="uname">${esc(names[i])}</div>
+      <div>${fcell}</div>
+      <div><input class="inp" id="f_ucost${i}" type="number" step="any" value="${gv(i,'cost')}" oninput="recalcUnits()"></div>
+      <div><input class="inp" id="f_usell${i}" type="number" step="any" value="${gv(i,'price')}" oninput="recalcUnits()"></div>
     </div>`;
   }
-  sec.innerHTML=rows+`<div class="fhint">الوحدة الصغرى: <b>${esc(names[names.length-1])}</b> — وسعرها هو «سعر المفرد» بالأسفل.</div>`;
+  sec.innerHTML=`<div class="utable">${rows}</div>${li>0?`<div class="fhint">اكتب سعر شراء/بيع الوحدة الكبرى وعدد ما فيها، وسيُحسب سعر الأصغر تلقائياً (يمكن تعديله).</div>`:''}`;
 }
 function toggleCatPanel(mode){
   const pn=document.getElementById('catPanel');if(!pn)return;
@@ -2179,7 +2229,7 @@ function renderDeals(){
     <div class="deal-card" style="cursor:pointer" onclick="openProductDetail('${p.id}')">
       <div class="deal-img" ${img?`style="background-image:url(${img})"`:''}>${img?'':svg(I.box,30)}
         <span class="deal-price">${money(p.price)} ${CUR()}</span>${dp?`<span class="disc-badge">-${dp}%</span>`:''}</div>
-      <div class="deal-info"><div class="deal-name">${esc(p.name)}</div><div class="deal-tag">${dp?'-'+dp+'% '+t('off'):t('bestPrice')}</div></div>
+      <div class="deal-info"><div class="deal-name">${esc(pName(p))}</div><div class="deal-tag">${dp?'-'+dp+'% '+t('off'):t('bestPrice')}</div></div>
     </div>`;}).join('');
 }
 function renderBrands(){}
@@ -2208,7 +2258,7 @@ function renderStoreGrid(){
         <button class="fav-btn ${isFav(p.id)?'on':''}" onclick="event.stopPropagation();favToggle('${p.id}')" aria-label="fav">${svg(I.heart,17)}</button></div>
       <div class="prod-info">
         <div class="prod-cat">${esc(catLabel(p.category))}</div>
-        <div class="prod-name">${esc(p.name)}</div>
+        <div class="prod-name">${esc(pName(p))}</div>
         <div class="prod-foot">
           <div class="prod-price">${money(p.price)} <small>${CUR()}</small>${dp?`<s class="old-price">${money(p.oldPrice)}</s>`:''}</div>
           ${cardCtrl(p,out)}
@@ -2303,7 +2353,7 @@ function openProductDetail(id){
       ${imgs.length>1?`<div class="pd-thumbs">${imgs.map((s,i)=>`<div class="pd-thumb ${i===0?'on':''}" data-src="${s}" style="background-image:url(${s})" onclick="pdSetImg('${s}')"></div>`).join('')}</div>`:''}
     </div>
     <div class="prod-cat" style="font-size:12.5px;margin-top:12px">${esc(catLabel(p.category))}</div>
-    <h3 style="font-size:19px;font-weight:800;margin:3px 0 8px">${esc(p.name)}</h3>
+    <h3 style="font-size:19px;font-weight:800;margin:3px 0 8px">${esc(pName(p))}</h3>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <span style="font-size:21px;font-weight:800;color:var(--primary-d)">${money(p.price)} ${CUR()}</span>
       ${discPct(p)?`<s style="color:#94A3B8;font-weight:600;font-size:15px">${money(p.oldPrice)} ${CUR()}</s><span class="badge" style="background:#FCE7EE;color:#E11D48">-${discPct(p)}% ${t('off')}</span>`:''}
@@ -2318,7 +2368,7 @@ function openProductDetail(id){
     ${related.length?`<div style="margin-top:20px"><div style="font-weight:800;font-size:15px;margin-bottom:10px">${t('related')}</div>
       <div class="deal-row" style="padding:0 0 4px">${related.map(r=>{const ri=prodImg(r);return`<div class="deal-card" style="cursor:pointer;width:130px" onclick="closeModal();setTimeout(()=>openProductDetail('${r.id}'),60)">
         <div class="deal-img" style="height:100px${ri?`;background-image:url(${ri})`:''}">${ri?'':svg(I.box,26)}<span class="deal-price">${money(r.price)} ${CUR()}</span></div>
-        <div class="deal-info"><div class="deal-name" style="height:auto">${esc(r.name)}</div></div></div>`;}).join('')}</div></div>`:''}`,
+        <div class="deal-info"><div class="deal-name" style="height:auto">${esc(pName(r))}</div></div></div>`;}).join('')}</div></div>`:''}`,
     actions:[
       out?null:{label:t('addCart'),primary:true,icon:I.plus,fn:()=>{addToCartStore(_pdId,_pdQty);return true;}},
       {label:t('close'),fn:()=>true}
@@ -2342,7 +2392,7 @@ function renderStoreCart(){
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">${reco.map(p=>{const img=prodImg(p);return`
           <div class="prod-card" style="cursor:pointer" onclick="closeCart();setTimeout(()=>openProductDetail('${p.id}'),80)">
             <div class="prod-img" style="height:96px${img?`;background-image:url(${img})`:''}">${img?'':svg(I.box,26)}<span class="prod-badge">${money(p.price)} ${CUR()}</span></div>
-            <div class="prod-info" style="padding:8px 10px 10px"><div class="prod-name" style="font-size:12px">${esc(p.name)}</div></div>
+            <div class="prod-info" style="padding:8px 10px 10px"><div class="prod-name" style="font-size:12px">${esc(pName(p))}</div></div>
           </div>`;}).join('')}</div></div>`:''}`;
     foot.innerHTML='';return;
   }
@@ -2460,7 +2510,7 @@ function openFavorites(){
   const body=favs.length?`<div style="display:flex;flex-direction:column;gap:10px">${favs.map(p=>{const img=prodImg(p);return`
     <div style="display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:14px;padding:10px">
       <div style="width:54px;height:54px;border-radius:11px;flex:0 0 auto;background:linear-gradient(135deg,#EEF3FF,#DDF6FB) center/cover no-repeat;${img?`background-image:url(${img})`:''};display:grid;place-items:center" onclick="closeModal();setTimeout(()=>openProductDetail('${p.id}'),60)">${img?'':svg(I.box,22)}</div>
-      <div style="flex:1" onclick="closeModal();setTimeout(()=>openProductDetail('${p.id}'),60)"><b style="font-size:14px">${esc(p.name)}</b><div class="prod-price" style="font-size:14px">${money(p.price)} ${CUR()}</div></div>
+      <div style="flex:1" onclick="closeModal();setTimeout(()=>openProductDetail('${p.id}'),60)"><b style="font-size:14px">${esc(pName(p))}</b><div class="prod-price" style="font-size:14px">${money(p.price)} ${CUR()}</div></div>
       <button class="prod-add" ${p.qty<=0?'disabled':''} onclick="addToCartStore('${p.id}')">${svg(I.plus,16)}</button>
       <button class="btn btn-sm btn-ghost" onclick="favToggle('${p.id}');openFavorites()">${svg(I.heart,15)}</button>
     </div>`;}).join('')}</div>`
