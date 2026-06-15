@@ -182,6 +182,9 @@ textarea.inp{resize:vertical;min-height:64px}
 .modal-f{padding:14px 20px;border-top:1px solid var(--line-2);display:flex;gap:10px;justify-content:flex-start}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+.fsec{font-size:12.5px;font-weight:800;color:var(--primary-d);margin:18px 0 9px;border-bottom:1px solid var(--line);padding-bottom:6px}
+.fsec:first-child{margin-top:0}
+.fhint{font-size:11.5px;color:var(--muted);margin-top:5px;font-weight:600}
 
 /* Toast */
 .toasts{position:fixed;top:14px;left:0;right:0;bottom:auto;z-index:95;display:flex;flex-direction:column;align-items:center;gap:9px;padding:0 16px;pointer-events:none}
@@ -1047,48 +1050,110 @@ function renderProducts(){
     </td>
   </tr>`;}).join('')}</tbody></table>`;
 }
+const UNITS=['قطعة','كرتون','علبة','كيس','متر','متر مربع','كيلو','غرام','لتر','لفة','صندوق','طن','حبة','طقم','زوج','رول'];
 function editProduct(id){
-  const p=id?DB.products.find(x=>x.id===id):{name:'',code:'',category:DB.categories[0]||'',price:'',wholesale:'',qty:0,minQty:5,desc:'',image:''};
+  const p=id?DB.products.find(x=>x.id===id):{name:'',code:'',category:DB.categories[0]||'',price:'',wholesale:'',qty:0,minQty:5,desc:'',image:'',unitSmall:'قطعة',unitLarge:'',unitFactor:0,priceWholesale:'',priceHalf:'',oldPrice:0,origin:'',expiry:'',shelf:'',notes:''};
   _pendingImgs=prodImgs(p).slice();
-  modal({title:id?'تعديل المنتج':'منتج جديد',size:'lg',body:`
+  modal({title:id?'تعديل بطاقة المادة':'بطاقة مادة جديدة',size:'lg',body:`
     <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
       <div style="flex:0 0 auto;width:122px">
-        <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:6px">صور المنتج (حتى 5)</label>
+        <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:6px">صور المادة (حتى 5)</label>
         <div id="imgStrip" style="display:flex;flex-wrap:wrap;gap:7px"></div>
         <input type="file" id="f_img" accept="image/*" class="hidden" onchange="pickProductImage(this)">
       </div>
-      <div style="flex:1;min-width:240px" class="grid2">
-        <div class="field"><label>اسم المنتج *</label><input class="inp" id="f_name" value="${esc(p.name)}"></div>
-        <div class="field"><label>كود / باركود المنتج</label>
-          <div style="display:flex;gap:6px"><input class="inp" id="f_code" value="${esc(p.code)}" style="flex:1">
-          <button class="btn btn-icon btn-sm" title="مسح" onclick="scanBarcode(c=>{document.getElementById('f_code').value=c})">${svg(I.search,16)}</button></div></div>
-        <div class="field"><label>القسم</label><select class="inp" id="f_cat">${DB.categories.map(c=>`<option ${c===p.category?'selected':''}>${esc(c)}</option>`).join('')}</select></div>
-        <div class="field"><label>سعر البيع *</label><input class="inp" id="f_price" type="number" step="any" value="${p.price}"></div>
-        <div class="field"><label>السعر قبل الخصم (اختياري)</label><input class="inp" id="f_old" type="number" step="any" value="${p.oldPrice||''}" placeholder="اتركه فارغاً إن لا يوجد خصم"></div>
-        <div class="field"><label>سعر الجملة</label><input class="inp" id="f_wh" type="number" step="any" value="${p.wholesale}"></div>
-        <div class="field"><label>الكمية المتوفرة</label><input class="inp" id="f_qty" type="number" step="any" value="${p.qty}"></div>
-        <div class="field"><label>حد التنبيه (أقل كمية)</label><input class="inp" id="f_min" type="number" step="any" value="${p.minQty}"></div>
+      <div style="flex:1;min-width:240px">
+        <div class="fsec">البيانات الأساسية</div>
+        <div class="grid2">
+          <div class="field"><label>اسم المادة *</label><input class="inp" id="f_name" value="${esc(p.name)}"></div>
+          <div class="field"><label>الكود / الباركود</label><div style="display:flex;gap:6px"><input class="inp" id="f_code" value="${esc(p.code)}" style="flex:1">
+            <button class="btn btn-icon btn-sm" title="مسح" onclick="scanBarcode(c=>{document.getElementById('f_code').value=c})">${svg(I.search,16)}</button></div></div>
+          <div class="field" style="grid-column:1/-1"><label>القسم</label>
+            <div style="display:flex;gap:6px"><select class="inp" id="f_cat" style="flex:1">${DB.categories.map(c=>`<option ${c===p.category?'selected':''}>${esc(c)}</option>`).join('')}</select>
+              <button class="btn btn-icon btn-sm" title="قسم جديد" onclick="toggleNewCat()">${svg(I.plus,16)}</button></div>
+            <div id="newCatRow" style="display:none;gap:6px;margin-top:8px"><input class="inp" id="f_newcat" placeholder="اسم القسم الجديد" style="flex:1"><button class="btn btn-primary btn-sm" onclick="addCatInline()">إضافة</button></div></div>
+        </div>
+
+        <div class="fsec">الوحدات والتحويل</div>
+        <div class="grid3">
+          <div class="field"><label>الوحدة الصغرى</label><input class="inp" id="f_unitS" list="unitList" value="${esc(p.unitSmall||'قطعة')}" oninput="updateUnitHint()"></div>
+          <div class="field"><label>الوحدة الكبرى</label><input class="inp" id="f_unitL" list="unitList" value="${esc(p.unitLarge||'')}" placeholder="كرتون (اختياري)" oninput="updateUnitHint()"></div>
+          <div class="field"><label>معامل التحويل</label><input class="inp" id="f_factor" type="number" step="any" value="${p.unitFactor||''}" placeholder="مثال: 24" oninput="updateUnitHint()"></div>
+        </div>
+        <div class="fhint" id="unitHint"></div>
+        <datalist id="unitList">${UNITS.map(u=>`<option value="${u}">`).join('')}</datalist>
+
+        <div class="fsec">الأسعار</div>
+        <div class="grid2">
+          <div class="field"><label>سعر التكلفة (الشراء)</label><input class="inp" id="f_cost" type="number" step="any" value="${p.wholesale}" oninput="updateMargin()"></div>
+          <div class="field"><label>سعر المفرد (البيع) *</label><input class="inp" id="f_price" type="number" step="any" value="${p.price}" oninput="updateMargin()"></div>
+          <div class="field"><label>سعر الجملة</label><input class="inp" id="f_pw" type="number" step="any" value="${p.priceWholesale||''}"></div>
+          <div class="field"><label>سعر نصف الجملة</label><input class="inp" id="f_ph" type="number" step="any" value="${p.priceHalf||''}"></div>
+          <div class="field" style="grid-column:1/-1"><label>السعر قبل الخصم (للعرض في المتجر، اختياري)</label><input class="inp" id="f_old" type="number" step="any" value="${p.oldPrice||''}" placeholder="اتركه فارغاً إن لا يوجد خصم"></div>
+        </div>
+        <div id="f_margin" style="margin-top:10px;border-radius:10px;padding:9px 13px;font-size:13px;font-weight:700;display:none"></div>
+
+        <div class="fsec">المخزون</div>
+        <div class="grid2">
+          <div class="field"><label>الكمية المتوفرة</label><input class="inp" id="f_qty" type="number" step="any" value="${p.qty}"></div>
+          <div class="field"><label>حد التنبيه (أقل كمية)</label><input class="inp" id="f_min" type="number" step="any" value="${p.minQty}"></div>
+        </div>
+
+        <div class="fsec">حقول إضافية</div>
+        <div class="grid2">
+          <div class="field"><label>بلد المنشأ</label><input class="inp" id="f_origin" value="${esc(p.origin||'')}" placeholder="مثال: تركيا"></div>
+          <div class="field"><label>تاريخ الصلاحية</label><input class="inp" id="f_exp" type="date" value="${esc(p.expiry||'')}"></div>
+          <div class="field"><label>موقع الرف</label><input class="inp" id="f_shelf" value="${esc(p.shelf||'')}" placeholder="مثال: رف A3"></div>
+          <div class="field"><label>ملاحظات داخلية</label><input class="inp" id="f_notes" value="${esc(p.notes||'')}"></div>
+        </div>
       </div>
     </div>
-    <div class="field" style="margin-top:14px"><label>وصف المنتج</label><textarea class="inp" id="f_desc">${esc(p.desc||'')}</textarea></div>
+    <div class="fsec">الوصف (يظهر للزبائن في المتجر)</div>
+    <div class="field"><textarea class="inp" id="f_desc">${esc(p.desc||'')}</textarea></div>
     ${p.code?`<div style="margin-top:14px;text-align:center;background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px">
-      <div class="muted" style="font-size:12px;margin-bottom:6px">باركود المنتج</div>${barcodeSVG(p.code,46)}
+      <div class="muted" style="font-size:12px;margin-bottom:6px">باركود المادة</div>${barcodeSVG(p.code,46)}
       <div style="margin-top:8px"><button class="btn btn-sm" onclick="printLabel('${id}')">${svg(I.print,15)} طباعة ملصق</button></div></div>`:''}
   `,actions:[
     {label:'حفظ',primary:true,fn:()=>{
-      const name=val('f_name').trim();const price=parseFloat(val('f_price'));
-      if(!name){toast('أدخل اسم المنتج','err');return false;}
+      const name=val('f_name').trim();
+      if(!name){toast('أدخل اسم المادة','err');return false;}
       const data={name,code:val('f_code').trim(),category:val('f_cat'),
-        price:price||0,wholesale:parseFloat(val('f_wh'))||0,oldPrice:parseFloat(val('f_old'))||0,
-        qty:parseFloat(val('f_qty'))||0,minQty:parseFloat(val('f_min'))||0,desc:val('f_desc').trim(),
-        images:_pendingImgs.slice(),image:_pendingImgs[0]||''};
+        unitSmall:val('f_unitS').trim()||'قطعة',unitLarge:val('f_unitL').trim(),unitFactor:parseFloat(val('f_factor'))||0,
+        wholesale:parseFloat(val('f_cost'))||0,price:parseFloat(val('f_price'))||0,
+        priceWholesale:parseFloat(val('f_pw'))||0,priceHalf:parseFloat(val('f_ph'))||0,oldPrice:parseFloat(val('f_old'))||0,
+        qty:parseFloat(val('f_qty'))||0,minQty:parseFloat(val('f_min'))||0,
+        origin:val('f_origin').trim(),expiry:val('f_exp'),shelf:val('f_shelf').trim(),notes:val('f_notes').trim(),
+        desc:val('f_desc').trim(),images:_pendingImgs.slice(),image:_pendingImgs[0]||''};
       if(id)Object.assign(p,data);else DB.products.push({id:uid('p'),createdAt:Date.now(),...data});
       _pendingImgs=[];
-      save();toast(id?'تم تحديث المنتج':'تمت إضافة المنتج','ok');renderChips&&renderChips();renderProducts();render();
+      save();toast(id?'تم تحديث المادة':'تمت إضافة المادة','ok');renderChips&&renderChips();renderProducts();render();
     }},
     {label:'إلغاء',fn:()=>{_pendingImgs=[];return true;}}
   ]});
-  setTimeout(renderImgStrip,30);
+  setTimeout(()=>{renderImgStrip();updateMargin();updateUnitHint();},30);
+}
+function updateMargin(){
+  const el=document.getElementById('f_margin');if(!el)return;
+  const cost=parseFloat(val('f_cost'))||0,price=parseFloat(val('f_price'))||0;
+  if(price<=0||cost<=0){el.style.display='none';return;}
+  const profit=price-cost,pct=cost>0?profit/cost*100:0,neg=profit<0;
+  el.style.display='block';
+  el.style.background=neg?'var(--danger-soft)':'var(--success-soft)';
+  el.style.color=neg?'var(--danger)':'var(--success)';
+  el.innerHTML=`هامش الربح للوحدة: <span class="t-num">${money(profit)} ${CUR()}</span> · النسبة: <span class="t-num">${pct.toFixed(1)}%</span>`;
+}
+function updateUnitHint(){
+  const el=document.getElementById('unitHint');if(!el)return;
+  const s=val('f_unitS').trim()||'قطعة',l=val('f_unitL').trim(),f=parseFloat(val('f_factor'))||0;
+  el.textContent=(l&&f>0)?`1 ${l} = ${f} ${s}`:'';
+}
+function toggleNewCat(){const r=document.getElementById('newCatRow');if(!r)return;const show=getComputedStyle(r).display==='none';r.style.display=show?'flex':'none';if(show){const i=document.getElementById('f_newcat');if(i)i.focus();}}
+function addCatInline(){
+  const i=document.getElementById('f_newcat');const name=(i.value||'').trim();
+  if(!name){toast('اكتب اسم القسم','err');return;}
+  if(!DB.categories.includes(name)){DB.categories.push(name);save();}
+  const sel=document.getElementById('f_cat');
+  if(![...sel.options].some(o=>o.value===name)){const o=document.createElement('option');o.value=name;o.textContent=name;sel.appendChild(o);}
+  sel.value=name;i.value='';document.getElementById('newCatRow').style.display='none';toast('تمت إضافة القسم','ok');
 }
 function delProduct(id){
   const p=DB.products.find(x=>x.id===id);
