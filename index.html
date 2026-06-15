@@ -720,6 +720,7 @@ DB=load()||seed();
 if(!DB.settings)DB.settings={cashStart:0,role:'المدير',currency:'د.ع'};
 if(!DB.seq)DB.seq={sale:1,purchase:1};
 if(!DB.fav)DB.fav=[];
+if(!DB.catUnits)DB.catUnits={};
 if(!DB.settings.whatsapp)DB.settings.whatsapp='22222227268';
 if(!DB.settings.payments)DB.settings.payments=['نقداً عند الاستلام','تحويل / حوالة','بطاقة (ماستر/فيزا)','بنكيلي','مصرفي','سداد','امانتي','كليك'];
 // حسابات الموظفين الافتراضية (صاحب 1، مدير 1، محاسب 1، مسيّرون 6)
@@ -1051,9 +1052,11 @@ function renderProducts(){
   </tr>`;}).join('')}</tbody></table>`;
 }
 const UNITS=['قطعة','كرتون','علبة','كيس','متر','متر مربع','كيلو','غرام','لتر','لفة','صندوق','طن','حبة','طقم','زوج','رول'];
+let _curProdUnits=[];
 function editProduct(id){
-  const p=id?DB.products.find(x=>x.id===id):{name:'',code:'',category:DB.categories[0]||'',price:'',wholesale:'',qty:0,minQty:5,desc:'',image:'',unitSmall:'قطعة',unitLarge:'',unitFactor:0,priceWholesale:'',priceHalf:'',oldPrice:0,origin:'',expiry:'',shelf:'',notes:''};
+  const p=id?DB.products.find(x=>x.id===id):{name:'',code:'',category:DB.categories[0]||'',price:'',wholesale:'',qty:0,minQty:5,desc:'',image:'',priceWholesale:'',priceHalf:'',oldPrice:0,origin:'',expiry:'',shelf:'',notes:'',units:[]};
   _pendingImgs=prodImgs(p).slice();
+  _curProdUnits=(p.units||[]).slice();
   modal({title:id?'تعديل بطاقة المادة':'بطاقة مادة جديدة',size:'lg',body:`
     <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
       <div style="flex:0 0 auto;width:122px">
@@ -1068,21 +1071,17 @@ function editProduct(id){
           <div class="field"><label>الكود / الباركود</label><div style="display:flex;gap:6px"><input class="inp" id="f_code" value="${esc(p.code)}" style="flex:1">
             <button class="btn btn-icon btn-sm" title="مسح" onclick="scanBarcode(c=>{document.getElementById('f_code').value=c})">${svg(I.search,16)}</button></div></div>
           <div class="field" style="grid-column:1/-1"><label>القسم</label>
-            <div style="display:flex;gap:6px"><select class="inp" id="f_cat" style="flex:1">${DB.categories.map(c=>`<option ${c===p.category?'selected':''}>${esc(c)}</option>`).join('')}</select>
-              <button class="btn btn-icon btn-sm" title="قسم جديد" onclick="toggleNewCat()">${svg(I.plus,16)}</button></div>
-            <div id="newCatRow" style="display:none;gap:6px;margin-top:8px"><input class="inp" id="f_newcat" placeholder="اسم القسم الجديد" style="flex:1"><button class="btn btn-primary btn-sm" onclick="addCatInline()">إضافة</button></div></div>
+            <div style="display:flex;gap:6px"><select class="inp" id="f_cat" style="flex:1" onchange="renderUnitSection()">${DB.categories.map(c=>`<option ${c===p.category?'selected':''}>${esc(c)}</option>`).join('')}</select>
+              <button class="btn btn-icon btn-sm" title="قسم جديد" onclick="toggleCatPanel('new')">${svg(I.plus,16)}</button>
+              <button class="btn btn-sm" title="وحدات القسم" onclick="toggleCatPanel('edit')">وحدات</button></div>
+            <div id="catPanel" style="display:none;margin-top:8px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px"></div></div>
         </div>
 
-        <div class="fsec">الوحدات والتحويل</div>
-        <div class="grid3">
-          <div class="field"><label>الوحدة الصغرى</label><input class="inp" id="f_unitS" list="unitList" value="${esc(p.unitSmall||'قطعة')}" oninput="updateUnitHint()"></div>
-          <div class="field"><label>الوحدة الكبرى</label><input class="inp" id="f_unitL" list="unitList" value="${esc(p.unitLarge||'')}" placeholder="كرتون (اختياري)" oninput="updateUnitHint()"></div>
-          <div class="field"><label>معامل التحويل</label><input class="inp" id="f_factor" type="number" step="any" value="${p.unitFactor||''}" placeholder="مثال: 24" oninput="updateUnitHint()"></div>
-        </div>
-        <div class="fhint" id="unitHint"></div>
+        <div class="fsec">الوحدات والأسعار (حسب القسم)</div>
+        <div id="unitSection"></div>
         <datalist id="unitList">${UNITS.map(u=>`<option value="${u}">`).join('')}</datalist>
 
-        <div class="fsec">الأسعار</div>
+        <div class="fsec">الأسعار (الوحدة الصغرى)</div>
         <div class="grid2">
           <div class="field"><label>سعر التكلفة (الشراء)</label><input class="inp" id="f_cost" type="number" step="any" value="${p.wholesale}" oninput="updateMargin()"></div>
           <div class="field"><label>سعر المفرد (البيع) *</label><input class="inp" id="f_price" type="number" step="any" value="${p.price}" oninput="updateMargin()"></div>
@@ -1094,7 +1093,7 @@ function editProduct(id){
 
         <div class="fsec">المخزون</div>
         <div class="grid2">
-          <div class="field"><label>الكمية المتوفرة</label><input class="inp" id="f_qty" type="number" step="any" value="${p.qty}"></div>
+          <div class="field"><label>الكمية المتوفرة (بالوحدة الصغرى)</label><input class="inp" id="f_qty" type="number" step="any" value="${p.qty}"></div>
           <div class="field"><label>حد التنبيه (أقل كمية)</label><input class="inp" id="f_min" type="number" step="any" value="${p.minQty}"></div>
         </div>
 
@@ -1116,20 +1115,23 @@ function editProduct(id){
     {label:'حفظ',primary:true,fn:()=>{
       const name=val('f_name').trim();
       if(!name){toast('أدخل اسم المادة','err');return false;}
-      const data={name,code:val('f_code').trim(),category:val('f_cat'),
-        unitSmall:val('f_unitS').trim()||'قطعة',unitLarge:val('f_unitL').trim(),unitFactor:parseFloat(val('f_factor'))||0,
-        wholesale:parseFloat(val('f_cost'))||0,price:parseFloat(val('f_price'))||0,
+      const cat=val('f_cat');const names=catUnitNames(cat);const basePrice=parseFloat(val('f_price'))||0;
+      const units=names.map((nm,i)=>{const last=i===names.length-1;
+        return {name:nm,factor:last?1:(parseFloat(val('f_fac'+(i+1)))||0),price:last?basePrice:(parseFloat(val('f_up'+i))||0)};});
+      const data={name,code:val('f_code').trim(),category:cat,
+        units,unit:names[names.length-1],
+        wholesale:parseFloat(val('f_cost'))||0,price:basePrice,
         priceWholesale:parseFloat(val('f_pw'))||0,priceHalf:parseFloat(val('f_ph'))||0,oldPrice:parseFloat(val('f_old'))||0,
         qty:parseFloat(val('f_qty'))||0,minQty:parseFloat(val('f_min'))||0,
         origin:val('f_origin').trim(),expiry:val('f_exp'),shelf:val('f_shelf').trim(),notes:val('f_notes').trim(),
         desc:val('f_desc').trim(),images:_pendingImgs.slice(),image:_pendingImgs[0]||''};
       if(id)Object.assign(p,data);else DB.products.push({id:uid('p'),createdAt:Date.now(),...data});
-      _pendingImgs=[];
+      _pendingImgs=[];_curProdUnits=[];
       save();toast(id?'تم تحديث المادة':'تمت إضافة المادة','ok');renderChips&&renderChips();renderProducts();render();
     }},
     {label:'إلغاء',fn:()=>{_pendingImgs=[];return true;}}
   ]});
-  setTimeout(()=>{renderImgStrip();updateMargin();updateUnitHint();},30);
+  setTimeout(()=>{renderImgStrip();updateMargin();renderUnitSection();},30);
 }
 function updateMargin(){
   const el=document.getElementById('f_margin');if(!el)return;
@@ -1141,19 +1143,59 @@ function updateMargin(){
   el.style.color=neg?'var(--danger)':'var(--success)';
   el.innerHTML=`هامش الربح للوحدة: <span class="t-num">${money(profit)} ${CUR()}</span> · النسبة: <span class="t-num">${pct.toFixed(1)}%</span>`;
 }
-function updateUnitHint(){
-  const el=document.getElementById('unitHint');if(!el)return;
-  const s=val('f_unitS').trim()||'قطعة',l=val('f_unitL').trim(),f=parseFloat(val('f_factor'))||0;
-  el.textContent=(l&&f>0)?`1 ${l} = ${f} ${s}`:'';
+function catUnitNames(cat){const c=DB.catUnits&&DB.catUnits[cat];return (c&&c.names&&c.names.length)?c.names.slice():['قطعة'];}
+function renderUnitSection(){
+  const sec=document.getElementById('unitSection');if(!sec)return;
+  const names=catUnitNames(val('f_cat'));const u=_curProdUnits;
+  const getP=i=>{const x=u[i];return x&&x.price!=null&&x.price!==''?x.price:'';};
+  const getF=i=>{const x=u[i];return x&&x.factor?x.factor:'';};
+  if(names.length<=1){
+    sec.innerHTML=`<div class="fhint">هذا القسم بوحدة واحدة: <b>${esc(names[0]||'قطعة')}</b> — وسعرها هو «سعر المفرد» في الأسعار بالأسفل.</div>`;return;
+  }
+  let rows='';
+  for(let i=0;i<names.length-1;i++){
+    rows+=`<div class="grid2" style="margin-bottom:6px">
+      <div class="field"><label>سعر الوحدة (${esc(names[i])})</label><input class="inp" id="f_up${i}" type="number" step="any" value="${getP(i)}"></div>
+      <div class="field"><label>كم ${esc(names[i+1])} في ${esc(names[i])}؟</label><input class="inp" id="f_fac${i+1}" type="number" step="any" value="${getF(i)}" placeholder="مثال: 24"></div>
+    </div>`;
+  }
+  sec.innerHTML=rows+`<div class="fhint">الوحدة الصغرى: <b>${esc(names[names.length-1])}</b> — وسعرها هو «سعر المفرد» بالأسفل.</div>`;
 }
-function toggleNewCat(){const r=document.getElementById('newCatRow');if(!r)return;const show=getComputedStyle(r).display==='none';r.style.display=show?'flex':'none';if(show){const i=document.getElementById('f_newcat');if(i)i.focus();}}
-function addCatInline(){
-  const i=document.getElementById('f_newcat');const name=(i.value||'').trim();
-  if(!name){toast('اكتب اسم القسم','err');return;}
-  if(!DB.categories.includes(name)){DB.categories.push(name);save();}
+function toggleCatPanel(mode){
+  const pn=document.getElementById('catPanel');if(!pn)return;
+  if(pn.style.display!=='none'&&pn.dataset.mode===mode){pn.style.display='none';return;}
+  pn.dataset.mode=mode;pn.style.display='block';
+  const cat=val('f_cat');const names=mode==='edit'?catUnitNames(cat):['قطعة'];const count=names.length;
+  pn.innerHTML=`
+    ${mode==='new'?`<div class="field"><label>اسم القسم الجديد</label><input class="inp" id="f_newcat"></div>`:`<div class="fhint" style="margin-bottom:8px">تهيئة وحدات القسم: <b>${esc(cat)}</b></div>`}
+    <div class="field"><label>عدد الوحدات</label><select class="inp" id="f_ncount" onchange="renderCatUnitInputs()">
+      <option value="1" ${count===1?'selected':''}>وحدة واحدة</option>
+      <option value="2" ${count===2?'selected':''}>وحدتان (كبرى/صغرى)</option>
+      <option value="3" ${count===3?'selected':''}>ثلاث وحدات</option></select></div>
+    <div id="ncUnits" class="grid3" style="margin-top:6px"></div>
+    <button class="btn btn-primary btn-sm" style="margin-top:9px" onclick="saveCatPanel('${mode}')">${mode==='new'?'إضافة القسم':'حفظ وحدات القسم'}</button>`;
+  renderCatUnitInputs(names);
+}
+function renderCatUnitInputs(prefill){
+  const box=document.getElementById('ncUnits');if(!box)return;
+  const n=parseInt(val('f_ncount'))||1;
+  const labels=n===1?['الوحدة']:n===2?['الوحدة الكبرى','الوحدة الصغرى']:['الوحدة الكبرى','الوحدة الوسطى','الوحدة الصغرى'];
+  const pf=Array.isArray(prefill)?prefill:[];
+  box.innerHTML=labels.map((lb,i)=>`<div class="field"><label>${lb}</label><input class="inp" id="f_ncu${i}" list="unitList" value="${esc(pf[i]||(i===n-1?'قطعة':''))}"></div>`).join('');
+}
+function saveCatPanel(mode){
+  const n=parseInt(val('f_ncount'))||1;const names=[];
+  for(let i=0;i<n;i++){const v=(val('f_ncu'+i)||'').trim();if(!v){toast('اكتب اسم كل وحدة','err');return;}names.push(v);}
+  let cat;
+  if(mode==='new'){cat=(val('f_newcat')||'').trim();if(!cat){toast('اكتب اسم القسم','err');return;}if(!DB.categories.includes(cat))DB.categories.push(cat);}
+  else cat=val('f_cat');
+  DB.catUnits[cat]={names};save();
   const sel=document.getElementById('f_cat');
-  if(![...sel.options].some(o=>o.value===name)){const o=document.createElement('option');o.value=name;o.textContent=name;sel.appendChild(o);}
-  sel.value=name;i.value='';document.getElementById('newCatRow').style.display='none';toast('تمت إضافة القسم','ok');
+  if(![...sel.options].some(o=>o.value===cat)){const o=document.createElement('option');o.value=cat;o.textContent=cat;sel.appendChild(o);}
+  sel.value=cat;
+  document.getElementById('catPanel').style.display='none';
+  _curProdUnits=[];renderUnitSection();
+  toast(mode==='new'?'تمت إضافة القسم':'تم حفظ الوحدات','ok');
 }
 function delProduct(id){
   const p=DB.products.find(x=>x.id===id);

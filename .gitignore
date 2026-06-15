@@ -1,0 +1,8 @@
+# ملفات النظام
+.DS_Store
+Thumbs.db
+
+# ملفات مؤقتة
+*.tmp
+*.log
+app.js
