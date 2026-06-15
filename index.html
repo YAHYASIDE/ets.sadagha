@@ -68,8 +68,44 @@ a{color:inherit}
 .topbar h1{font-size:19px;font-weight:800}
 .topbar .sub{font-size:12.5px;color:var(--muted);margin-top:1px}
 .topbar .spacer{flex:1}
-.role-badge{font-size:12px;background:var(--primary-soft);color:var(--primary-d);padding:5px 11px;border-radius:20px;font-weight:700}
+.role-badge{font-size:12px;background:var(--primary-soft);color:var(--primary-d);padding:5px 11px;border-radius:20px;font-weight:700;white-space:nowrap}
+/* لوحة بطابع محاسبي (لابتوب) */
+.dsh-tools{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px}
+.dsh-tool{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 15px;font-size:13px;font-weight:700;color:var(--ink);cursor:pointer;box-shadow:var(--shadow);transition:.15s}
+.dsh-tool:hover{border-color:var(--primary);color:var(--primary-d);transform:translateY(-1px)}
+.dsh-tool svg{width:19px;height:19px}
+.erp-dash{display:grid;grid-template-columns:1fr 320px;gap:18px;align-items:start}
+.erp-side{display:flex;flex-direction:column;gap:14px;position:sticky;top:74px}
+.erp-look .look-body{padding:12px}
+.look-res{margin-top:8px;display:flex;flex-direction:column;gap:5px;max-height:240px;overflow:auto}
+.look-res button{display:flex;align-items:center;gap:8px;text-align:start;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:8px 10px;font-size:12.5px;cursor:pointer;color:var(--ink)}
+.look-res button:hover{border-color:var(--primary);background:var(--primary-soft)}
+.erp-info{display:flex;justify-content:space-between;padding:14px 16px}
+.erp-info .muted{display:block;font-size:11.5px;margin-bottom:2px}
+.erp-info b{font-size:15px}
+.erp-counts{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);border-radius:0 0 var(--radius) var(--radius);overflow:hidden}
+.erp-counts>div{background:var(--surface);padding:13px;text-align:center;font-size:11.5px;color:var(--muted);font-weight:600;display:flex;flex-direction:column;gap:3px}
+.erp-counts>div span{font-size:19px;font-weight:800;color:var(--ink)}
+.kv{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--line);font-size:14px}
+.kv:last-child{border-bottom:0}
+.kv span{color:var(--muted)}
+@media(max-width:860px){
+  .erp-dash{grid-template-columns:1fr}
+  .erp-side,.dsh-tools{display:none}
+}
 .content{padding:22px;max-width:1180px;width:100%}
+/* شريط الأدوات بطابع برنامج المحاسبة (لابتوب) */
+.erpbar{display:flex;align-items:center;gap:14px;padding:9px 16px;background:linear-gradient(180deg,#ffffff,#eef4fb);border-bottom:1px solid var(--line);position:sticky;top:57px;z-index:25;overflow-x:auto}
+.erp-brand{display:flex;align-items:center;gap:9px;padding-inline-end:14px;border-inline-end:1px solid var(--line);flex:0 0 auto}
+.erp-brand .logo{width:34px;height:34px;border-radius:9px;background:var(--primary);color:#fff;display:grid;place-items:center;font-weight:800}
+.erp-brand b{font-size:13px;font-weight:800;display:block;line-height:1.2}
+.erp-brand span{font-size:10.5px;color:var(--muted)}
+.erp-tools{display:flex;gap:5px;flex:1}
+.erpbtn{display:flex;flex-direction:column;align-items:center;gap:5px;width:76px;flex:0 0 auto;padding:7px 4px;border:1px solid transparent;border-radius:11px;background:transparent;cursor:pointer;transition:.15s}
+.erpbtn:hover{background:#fff;border-color:var(--line);box-shadow:var(--shadow)}
+.erpbtn.active{background:#fff;border-color:var(--primary);box-shadow:0 0 0 2px var(--primary-soft)}
+.erpbtn .ei{width:40px;height:40px;border-radius:11px;display:grid;place-items:center}
+.erpbtn small{font-size:10.5px;font-weight:700;color:var(--ink);white-space:nowrap}
 
 /* Buttons */
 .btn{
@@ -89,15 +125,15 @@ a{color:inherit}
 .btn-icon{padding:7px;border-radius:9px}
 
 /* Cards */
-.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(184px,1fr));gap:14px}
-.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px 17px;box-shadow:var(--shadow)}
-.stat{display:flex;flex-direction:column;gap:9px}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:12px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:15px 16px;box-shadow:var(--shadow)}
+.stat{display:flex;flex-direction:column;gap:10px}
 .stat .top{display:flex;align-items:center;justify-content:space-between}
-.stat .label{font-size:13px;color:var(--muted);font-weight:500}
-.stat .pill{width:34px;height:34px;border-radius:10px;display:grid;place-items:center}
-.stat .pill svg{width:18px;height:18px}
-.stat .val{font-size:25px;font-weight:800;letter-spacing:-.5px}
-.stat .val small{font-size:13px;font-weight:600;color:var(--muted)}
+.stat .label{font-size:12.5px;color:var(--muted);font-weight:600}
+.stat .pill{width:38px;height:38px;border-radius:11px;display:grid;place-items:center}
+.stat .pill svg{width:19px;height:19px}
+.stat .val{font-size:23px;font-weight:800;letter-spacing:-.5px}
+.stat .val small{font-size:12px;font-weight:600;color:var(--muted)}
 
 .panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
 .panel-h{display:flex;align-items:center;gap:12px;padding:14px 17px;border-bottom:1px solid var(--line-2)}
@@ -176,11 +212,20 @@ textarea.inp{resize:vertical;min-height:64px}
 .mobilenav{display:none}
 @media(max-width:860px){
   .sidebar{display:none}
+  .erpbar{display:none}
   .main{margin-inline-end:0}
   .mtop{display:inline-flex}
-  .topbar{padding:12px 16px}
-  .content{padding:16px 14px 86px}
+  .topbar{padding:11px 14px;gap:8px}
+  .topbar h1{font-size:16px;line-height:1.25}
+  .topbar .sub{display:none}
+  .content{padding:14px 12px 88px}
   .grid2,.grid3{grid-template-columns:1fr}
+  .cards{grid-template-columns:1fr 1fr;gap:10px}
+  .card{padding:13px 14px}
+  .stat{gap:8px}
+  .stat .val{font-size:20px}
+  .stat .pill{width:34px;height:34px}
+  .dash-grid,.rep-grid{grid-template-columns:1fr!important}
   .mobilenav{
     display:flex;position:fixed;inset-inline:0;bottom:0;z-index:50;background:var(--surface);
     border-top:1px solid var(--line);padding:6px 4px;justify-content:space-around;
@@ -204,6 +249,7 @@ textarea.inp{resize:vertical;min-height:64px}
 
 /* ====================== واجهة المتجر ====================== */
 #storefront{max-width:560px;margin:0 auto;background:#fff;min-height:100vh;padding-bottom:96px}
+@media(min-width:760px){#storefront{max-width:1180px}}
 
 /* رأس + بحث بأسلوب علي بابا */
 .sf-top{background:linear-gradient(165deg,#0A285F,#1D4ED8 70%,#2563EB);color:#fff;padding:0 0 16px;border-radius:0 0 22px 22px;position:relative;overflow:hidden}
@@ -269,6 +315,9 @@ textarea.inp{resize:vertical;min-height:64px}
 
 /* شبكة المنتجات */
 .prod-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding-top:10px}
+@media(min-width:640px){.prod-grid{grid-template-columns:repeat(3,1fr)}}
+@media(min-width:900px){.prod-grid{grid-template-columns:repeat(4,1fr)}}
+@media(min-width:1120px){.prod-grid{grid-template-columns:repeat(5,1fr)}}
 .prod-card{border:1px solid var(--line);border-radius:16px;overflow:hidden;background:#fff;display:flex;flex-direction:column;box-shadow:var(--shadow)}
 .prod-img{height:132px;position:relative;background:linear-gradient(135deg,#EEF3FF,#DDF6FB) center/cover no-repeat;display:grid;place-items:center}
 .prod-img svg{width:30px;height:30px;color:var(--primary);opacity:.5}
@@ -364,7 +413,7 @@ html.dark .pd-thumb{background-color:#1B2742}
 .prod-add:disabled{background:#cbd5e1}
 
 /* شريط سفلي */
-.store-nav{position:fixed;inset-inline:0;bottom:0;z-index:55;max-width:560px;margin:0 auto;background:rgba(255,255,255,.95);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border-top:1px solid var(--line);display:flex;justify-content:space-around;align-items:center;padding:7px 2px 9px}
+.store-nav{position:fixed;inset-inline:0;bottom:0;z-index:55;max-width:1180px;margin:0 auto;background:rgba(255,255,255,.95);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border-top:1px solid var(--line);display:flex;justify-content:space-around;align-items:center;padding:7px 2px 9px}
 .sn-item{position:relative;border:0;background:transparent;color:#64748B;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10px;font-weight:700;padding:5px 7px;border-radius:12px}
 .sn-item svg{width:22px;height:22px}
 .sn-item.active{color:var(--primary)}
@@ -386,7 +435,7 @@ html.dark .pd-thumb{background-color:#1B2742}
 .qty-ctrl button{width:30px;height:30px;border-radius:9px;border:1px solid var(--line);background:#fff;font-size:16px;font-weight:700}
 .store-cta{width:100%;border:0;color:#fff;padding:14px;border-radius:14px;font-size:15px;font-weight:700}
 
-@media(min-width:561px){#storefront,.store-nav,.cart-sheet{box-shadow:0 0 0 1px var(--line)}}
+@media(min-width:1200px){#storefront,.store-nav{box-shadow:0 0 0 1px var(--line)}}
 
 /* القائمة المنسدلة */
 .menu-drop{position:fixed;inset:0;z-index:75;display:none}
@@ -550,9 +599,10 @@ html.dark .pd-thumb{background-color:#1B2742}
       </div>
       <div class="spacer"></div>
       <button class="btn btn-sm" onclick="showStore()" style="margin-inline-end:8px">المتجر ↗</button>
-      <button class="btn btn-sm btn-ghost" onclick="logout()" style="margin-inline-end:8px" title="خروج">${''}خروج</button>
+      <button class="btn btn-sm btn-ghost" onclick="logout()" style="margin-inline-end:8px" title="خروج">خروج</button>
       <span class="role-badge" id="roleBadge">—</span>
     </header>
+    <div class="erpbar" id="erpbar"></div>
     <main class="content" id="view"></main>
   </div>
 </div>
@@ -792,6 +842,28 @@ function buildNav(){
   const mob=pages.filter(p=>!p.sep).slice(0,5);
   document.getElementById('mnav').innerHTML=mob.map(p=>
     `<button data-id="${p.id}" onclick="go('${p.id}')">${svg(p.icon,21)}<span>${p.t.split(' ')[0]}</span></button>`).join('');
+  buildToolbar();
+}
+const TOOLBAR=[
+  {id:'sale',t:'فاتورة بيع',icon:I.invoice,c:'#16a34a'},
+  {id:'purchase',t:'فاتورة شراء',icon:I.truck,c:'#7c3aed'},
+  {id:'store',t:'المنتجات',icon:I.store,c:'#1D4ED8'},
+  {id:'inventory',t:'المخزون',icon:I.warehouse,c:'#0891b2'},
+  {id:'customers',t:'العملاء',icon:I.people,c:'#2563eb'},
+  {id:'suppliers',t:'الموردون',icon:I.truck,c:'#9333ea'},
+  {id:'expenses',t:'المصروفات',icon:I.expense,c:'#dc2626'},
+  {id:'cash',t:'الصندوق',icon:I.wallet,c:'#ca8a04'},
+  {id:'reports',t:'التقارير',icon:I.report,c:'#0d9488'},
+  {id:'dash',t:'لوحة التحكم',icon:I.dash,c:'#475569'},
+  {id:'settings',t:'الإعدادات',icon:I.settings,c:'#64748b'},
+  {id:'users',t:'الموظفون',icon:I.people,c:'#7c3aed'},
+];
+function buildToolbar(){
+  const bar=document.getElementById('erpbar');if(!bar)return;
+  const items=TOOLBAR.filter(b=>can(b.id));
+  bar.innerHTML=`<div class="erp-brand"><div class="logo">ص</div><div><b>مؤسسة الصداقة</b><span>للتجارة العامة</span></div></div>
+    <div class="erp-tools">${items.map(b=>`<button class="erpbtn" data-id="${b.id}" onclick="go('${b.id}')" title="${b.t}">
+      <span class="ei" style="background:${b.c}18;color:${b.c}">${svg(b.icon,20)}</span><small>${b.t}</small></button>`).join('')}</div>`;
 }
 function go(id){
   if(!can(id))id=allowedPages()[0]||'dash';
@@ -799,7 +871,7 @@ function go(id){
   const p=PAGES.find(x=>x.id===id);
   document.getElementById('pageTitle').textContent=p.t;
   document.getElementById('pageSub').textContent=p.sub;
-  document.querySelectorAll('.nav button,.mobilenav button').forEach(b=>b.classList.toggle('active',b.dataset.id===id));
+  document.querySelectorAll('.nav button,.mobilenav button,.erpbtn').forEach(b=>b.classList.toggle('active',b.dataset.id===id));
   window.scrollTo(0,0);
   render();
 }
@@ -829,36 +901,86 @@ function vDash(v){
     ['رصيد الصندوق',money(cashBalance()),CUR(),I.wallet,'var(--primary)','var(--primary-soft)'],
     ['تنبيهات المخزون',low.length,'',I.alert,'var(--warn)','var(--warn-soft)'],
   ];
+  // شريط اختصارات (حسب صلاحية الدور)
+  const tools=[];
+  if(can('sale'))tools.push(['فاتورة بيع',I.invoice,"go('sale')"]);
+  if(can('purchase'))tools.push(['فاتورة شراء',I.truck,"go('purchase')"]);
+  if(can('store'))tools.push(['منتج جديد',I.box,"editProduct()"]);
+  if(can('customers'))tools.push(['عميل جديد',I.people,"editCustomer()"]);
+  if(can('expenses'))tools.push(['مصروف',I.expense,"go('expenses')"]);
+  if(can('cash'))tools.push(['الصندوق',I.wallet,"go('cash')"]);
+  if(can('reports'))tools.push(['التقارير',I.report,"go('reports')"]);
+  const txCount=DB.sales.length+DB.purchases.length+DB.expenses.length;
+  const invCount=DB.sales.length+DB.purchases.length;
+  const acctCount=DB.customers.length+DB.suppliers.length;
   v.innerHTML=`
-  <div class="cards">${cards.map(c=>`
-    <div class="card stat">
-      <div class="top">
-        <span class="label">${c[0]}</span>
-        <span class="pill" style="background:${c[5]};color:${c[4]}">${svg(c[3],18)}</span>
+  <div class="dsh-tools">${tools.map(t=>`<button class="dsh-tool" onclick="${t[2]}">${svg(t[1],19)}<span>${t[0]}</span></button>`).join('')}</div>
+  <div class="erp-dash">
+    <div class="erp-main">
+      <div class="cards">${cards.map(c=>`
+        <div class="card stat"><div class="top"><span class="label">${c[0]}</span>
+          <span class="pill" style="background:${c[5]};color:${c[4]}">${svg(c[3],18)}</span></div>
+          <div class="val t-num">${c[1]} ${c[2]?`<small>${c[2]}</small>`:''}</div></div>`).join('')}
       </div>
-      <div class="val t-num">${c[1]} ${c[2]?`<small>${c[2]}</small>`:''}</div>
-    </div>`).join('')}
-  </div>
-
-  <div style="margin-top:18px;display:grid;grid-template-columns:1.4fr 1fr;gap:16px" class="dash-grid">
-    <div class="panel">
-      <div class="panel-h">${svg(I.invoice,18)}<h3>أحدث الفواتير</h3><div class="spacer"></div>
-        <button class="btn btn-primary btn-sm" onclick="go('sale')">${svg(I.plus,16)} فاتورة جديدة</button></div>
-      <div class="tbl-wrap">${recentSalesTable()}</div>
-    </div>
-    <div class="panel">
-      <div class="panel-h">${svg(I.alert,18)}<h3>تنبيهات المخزون</h3>
-        <div class="spacer"></div><span class="badge b-low">${low.length}</span></div>
-      <div class="panel-b">
-        ${low.length?low.slice(0,8).map(p=>{const s=stockStatus(p);return`
-          <div class="row-line">
-            <div style="flex:1"><b>${esc(p.name)}</b><div class="muted" style="font-size:12.5px">${esc(p.category)}</div></div>
-            <span class="badge ${s.c}">${s.t} · ${p.qty}</span>
-          </div>`;}).join(''):`<div class="empty">${svg(I.check,42)}<b>كل المنتجات بمستوى جيد</b>لا توجد تنبيهات حالياً</div>`}
+      <div class="panel" style="margin-top:16px">
+        <div class="panel-h">${svg(I.invoice,18)}<h3>أحدث الفواتير</h3><div class="spacer"></div>
+          ${can('sale')?`<button class="btn btn-primary btn-sm" onclick="go('sale')">${svg(I.plus,16)} فاتورة جديدة</button>`:''}</div>
+        <div class="tbl-wrap">${recentSalesTable()}</div>
       </div>
+      ${can('store')?`<div class="panel" style="margin-top:16px">
+        <div class="panel-h">${svg(I.alert,18)}<h3>تنبيهات المخزون</h3><div class="spacer"></div><span class="badge b-low">${low.length}</span></div>
+        <div class="panel-b">${low.length?low.slice(0,8).map(p=>{const s=stockStatus(p);return`
+          <div class="row-line"><div style="flex:1"><b>${esc(p.name)}</b><div class="muted" style="font-size:12.5px">${esc(p.category)}</div></div>
+            <span class="badge ${s.c}">${s.t} · ${p.qty}</span></div>`;}).join(''):`<div class="empty">${svg(I.check,42)}<b>كل المنتجات بمستوى جيد</b>لا توجد تنبيهات حالياً</div>`}</div></div>`:''}
     </div>
-  </div>
-  <style>@media(max-width:860px){.dash-grid{grid-template-columns:1fr!important}}</style>`;
+    <aside class="erp-side">
+      <div class="panel erp-look"><div class="panel-h">${svg(I.box,16)}<h3>بحث المواد</h3></div>
+        <div class="look-body"><input class="inp" id="lkMat" placeholder="الرمز أو الاسم" oninput="lookMat(this.value)" autocomplete="off"><div id="lkMatRes" class="look-res"></div></div></div>
+      ${(can('customers')||can('suppliers'))?`<div class="panel erp-look"><div class="panel-h">${svg(I.people,16)}<h3>بحث الحسابات</h3></div>
+        <div class="look-body"><input class="inp" id="lkAcc" placeholder="اسم العميل أو المورد" oninput="lookAcc(this.value)" autocomplete="off"><div id="lkAccRes" class="look-res"></div></div></div>`:''}
+      <div class="panel"><div class="erp-info"><div><span class="muted">العملة</span><b>${CUR()}</b></div><div style="text-align:end"><span class="muted">التاريخ</span><b>${fmtDate(new Date())}</b></div></div></div>
+      <div class="panel"><div class="panel-h">${svg(I.dash,16)}<h3>ملخّص</h3></div>
+        <div class="erp-counts">
+          <div><span class="t-num">${txCount}</span>الحركات</div>
+          <div><span class="t-num">${invCount}</span>الفواتير</div>
+          <div><span class="t-num">${acctCount}</span>الحسابات</div>
+          <div><span class="t-num">${DB.products.length}</span>المواد</div>
+        </div></div>
+    </aside>
+  </div>`;
+}
+function lookMat(q){
+  q=(q||'').trim().toLowerCase();const el=document.getElementById('lkMatRes');if(!el)return;
+  if(!q){el.innerHTML='';return;}
+  const r=DB.products.filter(p=>(p.name||'').toLowerCase().includes(q)||(p.code||'').toLowerCase().includes(q)).slice(0,8);
+  el.innerHTML=r.length?r.map(p=>`<button onclick="matInfo('${p.id}')"><span style="flex:1;text-align:start">${esc(p.name)}</span><span class="muted">${esc(p.code||'')}</span></button>`).join(''):`<div class="muted" style="font-size:12px;padding:6px 2px">لا نتائج</div>`;
+}
+function matInfo(id){
+  const p=DB.products.find(x=>x.id===id);if(!p)return;
+  const acts=[];if(can('store'))acts.push({label:'تعديل',primary:true,fn:()=>{editProduct(p.id);return true;}});acts.push({label:'إغلاق',fn:()=>true});
+  modal({title:esc(p.name),body:`
+    <div class="kv"><span>الرمز</span><b>${esc(p.code||'—')}</b></div>
+    <div class="kv"><span>القسم</span><b>${esc(p.category||'—')}</b></div>
+    <div class="kv"><span>سعر البيع</span><b class="t-num">${money(p.price)} ${CUR()}</b></div>
+    <div class="kv"><span>سعر الجملة</span><b class="t-num">${money(p.wholesale||0)} ${CUR()}</b></div>
+    <div class="kv"><span>المخزون</span><b class="t-num">${p.qty}</b></div>`,actions:acts});
+}
+function lookAcc(q){
+  q=(q||'').trim().toLowerCase();const el=document.getElementById('lkAccRes');if(!el)return;
+  if(!q){el.innerHTML='';return;}
+  const cs=DB.customers.map(c=>({c,t:'عميل'})),sp=DB.suppliers.map(s=>({c:s,t:'مورد'}));
+  const r=[...cs,...sp].filter(a=>(a.c.name||'').toLowerCase().includes(q)||(a.c.phone||'').includes(q)).slice(0,8);
+  el.innerHTML=r.length?r.map(a=>`<button onclick="accInfo('${a.t}','${a.c.id}')"><span style="flex:1;text-align:start">${esc(a.c.name)}</span><span class="muted">${a.t}</span></button>`).join(''):`<div class="muted" style="font-size:12px;padding:6px 2px">لا نتائج</div>`;
+}
+function accInfo(type,id){
+  const a=(type==='عميل'?DB.customers:DB.suppliers).find(x=>x.id===id);if(!a)return;
+  const bal=a.balance||0;
+  modal({title:esc(a.name),body:`
+    <div class="kv"><span>النوع</span><b>${type}</b></div>
+    <div class="kv"><span>الهاتف</span><b>${esc(a.phone||'—')}</b></div>
+    <div class="kv"><span>العنوان</span><b>${esc(a.address||'—')}</b></div>
+    <div class="kv"><span>الرصيد</span><b class="t-num" style="color:${bal>0?'var(--danger)':'var(--success)'}">${money(bal)} ${CUR()}</b></div>`,
+    actions:[{label:'فتح القسم',primary:true,fn:()=>{go(type==='عميل'?'customers':'suppliers');return true;}},{label:'إغلاق',fn:()=>true}]});
 }
 function recentSalesTable(){
   const rows=[...DB.sales].reverse().slice(0,6);
