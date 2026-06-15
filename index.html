@@ -550,7 +550,8 @@ html.dark .pd-thumb{background-color:#1B2742}
       </div>
       <div class="spacer"></div>
       <button class="btn btn-sm" onclick="showStore()" style="margin-inline-end:8px">المتجر ↗</button>
-      <span class="role-badge" id="roleBadge">المدير</span>
+      <button class="btn btn-sm btn-ghost" onclick="logout()" style="margin-inline-end:8px" title="خروج">${''}خروج</button>
+      <span class="role-badge" id="roleBadge">—</span>
     </header>
     <main class="content" id="view"></main>
   </div>
@@ -656,7 +657,7 @@ function seed(){
   return {
     products,categories:cats,customers,suppliers,
     sales:[],purchases:[],expenses:[],cash:[],
-    settings:{cashStart:0,role:'المدير',currency:'د.ع'},
+    settings:{cashStart:0,role:'المدير',currency:'د.ع',whatsapp:'22222227268'},
     seq:{sale:1,purchase:1}
   };
 }
@@ -666,7 +667,28 @@ DB=load()||seed();
 if(!DB.settings)DB.settings={cashStart:0,role:'المدير',currency:'د.ع'};
 if(!DB.seq)DB.seq={sale:1,purchase:1};
 if(!DB.fav)DB.fav=[];
+if(!DB.settings.whatsapp)DB.settings.whatsapp='22222227268';
 if(!DB.settings.payments)DB.settings.payments=['نقداً عند الاستلام','تحويل / حوالة','بطاقة (ماستر/فيزا)','بنكيلي','مصرفي','سداد','امانتي','كليك'];
+// حسابات الموظفين الافتراضية (صاحب 1، مدير 1، محاسب 1، مسيّرون 6)
+if(!DB.users||!DB.users.length){
+  DB.users=[
+    {id:uid('u'),name:'الصاحب',username:'owner',pass:'owner',role:'صاحب'},
+    {id:uid('u'),name:'المدير',username:'manager',pass:'manager',role:'مدير'},
+    {id:uid('u'),name:'المحاسب',username:'accountant',pass:'accountant',role:'محاسب'},
+  ];
+  for(let i=1;i<=6;i++)DB.users.push({id:uid('u'),name:'مسيّر '+i,username:'staff'+i,pass:'staff'+i,role:'مسيّر'});
+  save();
+}
+// صلاحيات كل دور (أقسام لوحة الإدارة المسموحة)
+const ROLE_PAGES={
+  'صاحب':['dash','store','inventory','sale','purchase','customers','suppliers','expenses','cash','reports','settings','users'],
+  'مدير':['dash','store','inventory','sale','purchase','customers','suppliers','expenses','cash','reports','settings'],
+  'محاسب':['dash','customers','suppliers','expenses','cash','reports'],
+  'مسيّر':['store','inventory','sale','purchase'],
+};
+let CUR_USER=null;
+function allowedPages(){return CUR_USER?(ROLE_PAGES[CUR_USER.role]||['dash']):[];}
+function can(id){return allowedPages().includes(id);}
 
 /* ====================== المفضّلة + السلة المحفوظة + الصور ====================== */
 function isFav(id){return DB.fav.includes(id);}
@@ -758,18 +780,21 @@ const PAGES=[
   {id:'reports',t:'التقارير',sub:'المبيعات والأرباح والمخزون',icon:I.report},
   {sep:1},
   {id:'settings',t:'الإعدادات والنسخ الاحتياطي',sub:'البيانات والصلاحيات',icon:I.settings},
+  {id:'users',t:'الموظفون والصلاحيات',sub:'حسابات الدخول والأدوار',icon:I.people},
 ];
 let current='dash';
 function buildNav(){
-  const html=PAGES.map(p=>p.sep?'<div class="sep"></div>':
+  const pages=PAGES.filter(p=>p.sep||can(p.id));
+  const html=pages.map(p=>p.sep?'<div class="sep"></div>':
     `<button data-id="${p.id}" onclick="go('${p.id}')">${svg(p.icon)}<span>${p.t}</span></button>`).join('');
   document.getElementById('nav').innerHTML=html;
   document.getElementById('navDrawer').innerHTML=html;
-  const mob=PAGES.filter(p=>p.m).slice(0,5);
+  const mob=pages.filter(p=>!p.sep).slice(0,5);
   document.getElementById('mnav').innerHTML=mob.map(p=>
     `<button data-id="${p.id}" onclick="go('${p.id}')">${svg(p.icon,21)}<span>${p.t.split(' ')[0]}</span></button>`).join('');
 }
 function go(id){
+  if(!can(id))id=allowedPages()[0]||'dash';
   current=id;closeDrawer();
   const p=PAGES.find(x=>x.id===id);
   document.getElementById('pageTitle').textContent=p.t;
@@ -785,7 +810,7 @@ function closeDrawer(){document.getElementById('drawer').classList.remove('open'
 function render(){
   const v=document.getElementById('view');
   ({dash:vDash,store:vStore,inventory:vInventory,sale:vSale,purchase:vPurchase,customers:vCustomers,
-    suppliers:vSuppliers,expenses:vExpenses,cash:vCash,reports:vReports,settings:vSettings}[current]||vDash)(v);
+    suppliers:vSuppliers,expenses:vExpenses,cash:vCash,reports:vReports,settings:vSettings,users:vUsers}[current]||vDash)(v);
 }
 
 /* ---------- لوحة التحكم ---------- */
@@ -1494,11 +1519,8 @@ function vSettings(v){
   <div class="panel" style="margin-bottom:16px"><div class="panel-h">${svg(I.settings,18)}<h3>إعدادات عامة</h3></div>
     <div style="padding:18px"><div class="grid2">
       <div class="field"><label>العملة</label><input class="inp" id="set_cur" value="${esc(CUR())}"></div>
-      <div class="field"><label>الدور الحالي (الصلاحية)</label><select class="inp" id="set_role">
-        ${['المدير','المحاسب','أمين المخزن','البائع'].map(r=>`<option ${DB.settings.role===r?'selected':''}>${r}</option>`).join('')}</select></div>
       <div class="field"><label>رصيد الصندوق الافتتاحي</label><input class="inp" id="set_cash" type="number" step="any" value="${DB.settings.cashStart||0}"></div>
       <div class="field"><label>رقم واتساب (مع رمز الدولة، بدون +)</label><input class="inp" id="set_wa" placeholder="مثال: 213XXXXXXXXX" value="${esc(DB.settings.whatsapp||'')}"></div>
-      <div class="field"><label>كلمة مرور المدير</label><input class="inp" id="set_pass" value="${esc(DB.settings.adminPass||'admin')}"></div>
       <div class="field"><label>العلامات التجارية (افصل بفاصلة)</label><input class="inp" id="set_brands" value="${esc((DB.settings.brands||[]).join('، '))}"></div>
       <div class="field" style="grid-column:1/-1"><label>رابط صورة خلفية الواجهة (اختياري)</label><input class="inp" id="set_hero" placeholder="https://..." value="${esc(DB.settings.heroImage||'')}"></div>
       <div class="field" style="grid-column:1/-1"><label>معلومات عنا (تظهر في القائمة)</label><textarea class="inp" id="set_about" style="min-height:80px">${esc(DB.settings.about||'')}</textarea></div>
@@ -1539,10 +1561,8 @@ function vSettings(v){
 }
 function saveSettings(){
   DB.settings.currency=val('set_cur').trim()||'د.ع';
-  DB.settings.role=val('set_role');
   DB.settings.cashStart=parseFloat(val('set_cash'))||0;
   DB.settings.whatsapp=val('set_wa').trim();
-  DB.settings.adminPass=val('set_pass').trim()||'admin';
   DB.settings.brands=val('set_brands').split(/[،,]/).map(s=>s.trim()).filter(Boolean);
   DB.settings.heroImage=val('set_hero').trim();
   DB.settings.about=val('set_about').trim();
@@ -1551,7 +1571,7 @@ function saveSettings(){
     const [f,k]=pair.split(':');const el=document.getElementById('set_'+f);if(el)DB.settings[k]=el.value.trim();
   });
   const pay=document.getElementById('set_pay');if(pay)DB.settings.payments=pay.value.split(/[،,]/).map(s=>s.trim()).filter(Boolean);
-  save();document.getElementById('roleBadge').textContent=DB.settings.role;
+  save();if(CUR_USER)document.getElementById('roleBadge').textContent=CUR_USER.name+' · '+CUR_USER.role;
   toast('تم حفظ الإعدادات','ok');render();
 }
 function backupExport(){
@@ -1888,13 +1908,17 @@ function showStore(){
   applyDark();applyLang();window.scrollTo(0,0);
 }
 function showAdmin(){
+  if(!CUR_USER){adminLogin();return;}
   document.getElementById('storefront').classList.add('hidden');
   document.getElementById('storeNav').classList.add('hidden');
   closeCart();
   document.documentElement.classList.remove('dark');
   document.documentElement.dir='rtl';document.documentElement.lang='ar';
   document.getElementById('adminUI').classList.remove('hidden');
-  go('dash');window.scrollTo(0,0);
+  const rb=document.getElementById('roleBadge');if(rb)rb.textContent=`${CUR_USER.name} · ${CUR_USER.role}`;
+  buildNav();
+  go(allowedPages()[0]||'dash');
+  window.scrollTo(0,0);
 }
 function renderStore(){
   _topSellers=null;
@@ -2237,16 +2261,62 @@ function showTerms(){
 }
 
 /* ---- دخول المدير ---- */
+const ROLE_LIST=['صاحب','مدير','محاسب','مسيّر'];
+function roleColor(r){return {'صاحب':'#7c3aed','مدير':'#1D4ED8','محاسب':'#0891b2','مسيّر':'#16a34a'}[r]||'#64748b';}
+function vUsers(v){
+  if(!CUR_USER||CUR_USER.role!=='صاحب'){v.innerHTML=`<div class="empty" style="padding:40px">${svg(I.people,40)}<b>غير مصرّح</b>هذا القسم خاص بالصاحب</div>`;return;}
+  v.innerHTML=`<div class="panel"><div class="panel-h">${svg(I.people,18)}<h3>الموظفون (${DB.users.length})</h3>
+    <button class="btn btn-primary btn-sm" style="margin-inline-start:auto" onclick="editUser()">${svg(I.plus,15)} إضافة موظف</button></div>
+    <div style="padding:6px 0">
+    ${DB.users.map(u=>`<div class="row-line" style="padding:12px 18px;display:flex;align-items:center;gap:8px">
+       <span style="width:34px;height:34px;border-radius:50%;flex:0 0 auto;display:grid;place-items:center;background:${roleColor(u.role)}22;color:${roleColor(u.role)}">${svg(I.people,17)}</span>
+       <div style="flex:1"><b>${esc(u.name)}</b><div class="muted" style="font-size:12.5px">${esc(u.username)} · <span style="color:${roleColor(u.role)};font-weight:700">${u.role}</span></div></div>
+       <button class="btn btn-sm btn-icon" onclick="editUser('${u.id}')">${svg(I.edit,15)}</button>
+       ${u.role==='صاحب'?'':`<button class="btn btn-sm btn-icon btn-ghost" onclick="delUser('${u.id}')">${svg(I.trash,15)}</button>`}
+     </div>`).join('')}
+    </div></div>
+    <div class="panel" style="margin-top:14px"><div style="padding:16px;font-size:13px;line-height:1.95;color:var(--muted)">
+      <b style="color:var(--ink)">الصلاحيات حسب الدور:</b><br>
+      • <b style="color:#7c3aed">الصاحب</b>: كل الأقسام + إدارة الموظفين.<br>
+      • <b style="color:#1D4ED8">المدير</b>: كل الأقسام عدا إدارة الموظفين.<br>
+      • <b style="color:#0891b2">المحاسب</b>: لوحة التحكم، العملاء، الموردون، المصروفات، الصندوق، التقارير.<br>
+      • <b style="color:#16a34a">المسيّر</b>: المتجر، المخزون، فاتورة بيع، فاتورة شراء.
+    </div></div>`;
+}
+function editUser(id){
+  const u=id?DB.users.find(x=>x.id===id):{name:'',username:'',pass:'',role:'مسيّر'};
+  modal({title:id?'تعديل موظف':'موظف جديد',body:`
+    <div class="field"><label>الاسم</label><input class="inp" id="u_name" value="${esc(u.name)}"></div>
+    <div class="field"><label>اسم الدخول</label><input class="inp" id="u_user" value="${esc(u.username)}" placeholder="بالأحرف اللاتينية مثل staff7"></div>
+    <div class="field"><label>كلمة المرور</label><input class="inp" id="u_pass" value="${esc(u.pass)}"></div>
+    <div class="field"><label>الدور</label><select class="inp" id="u_role">${ROLE_LIST.map(r=>`<option ${u.role===r?'selected':''}>${r}</option>`).join('')}</select></div>`,
+    actions:[{label:'حفظ',primary:true,fn:()=>{
+      const name=val('u_name').trim(),us=val('u_user').trim(),pass=val('u_pass').trim(),role=val('u_role');
+      if(!name||!us||!pass){toast('أكمل كل البيانات','err');return false;}
+      if(DB.users.some(x=>x.username===us&&x.id!==(id||'')) ){toast('اسم الدخول مستخدم','err');return false;}
+      if(id)Object.assign(u,{name,username:us,pass,role});
+      else DB.users.push({id:uid('u'),name,username:us,pass,role});
+      save();toast('تم الحفظ','ok');render();return true;
+    }},{label:'إلغاء',fn:()=>true}]});
+}
+function delUser(id){
+  const u=DB.users.find(x=>x.id===id);if(!u)return;
+  if(u.role==='صاحب'){toast('لا يمكن حذف الصاحب','err');return;}
+  if(CUR_USER&&u.id===CUR_USER.id){toast('لا يمكن حذف حسابك الحالي','err');return;}
+  confirmDlg(`حذف الموظف "${esc(u.name)}"؟`,'سيفقد إمكانية الدخول.',()=>{DB.users=DB.users.filter(x=>x.id!==id);save();toast('تم الحذف','ok');render();});
+}
+function logout(){CUR_USER=null;showStore();toast('تم تسجيل الخروج','ok');}
 function adminLogin(){
-  modal({title:'تسجيل دخول المدير',body:`
-    <p class="muted" style="margin-bottom:14px;font-size:13.5px">أدخل كلمة مرور المدير للدخول إلى لوحة التحكم.</p>
-    <div class="field"><label>كلمة المرور</label><input class="inp" id="adm_pass" type="password" placeholder="••••••" onkeydown="if(event.key==='Enter')document.getElementById('admGoBtn').click()"></div>
-    <p class="muted" style="margin-top:10px;font-size:12px">الكلمة الافتراضية: admin — يمكنك تغييرها من الإعدادات.</p>`,
+  modal({title:'تسجيل الدخول',body:`
+    <p class="muted" style="margin-bottom:14px;font-size:13.5px">أدخل اسم الدخول وكلمة المرور الخاصة بك.</p>
+    <div class="field"><label>اسم الدخول</label><input class="inp" id="adm_user" placeholder="owner / manager / staff1..." autocapitalize="off" autocomplete="off"></div>
+    <div class="field"><label>كلمة المرور</label><input class="inp" id="adm_pass" type="password" placeholder="••••••" onkeydown="if(event.key==='Enter')document.getElementById('admGoBtn').click()"></div>`,
     actions:[
       {label:'دخول',primary:true,fn:()=>{
-        const pass=val('adm_pass');
-        if(pass===(DB.settings.adminPass||'admin')){toast('مرحباً بك','ok');showAdmin();return true;}
-        toast('كلمة المرور غير صحيحة','err');return false;
+        const us=(val('adm_user')||'').trim();const pass=val('adm_pass')||'';
+        const u=DB.users.find(x=>x.username===us&&x.pass===pass);
+        if(u){CUR_USER=u;toast('مرحباً '+u.name,'ok');showAdmin();return true;}
+        toast('بيانات الدخول غير صحيحة','err');return false;
       }},
       {label:'إلغاء',fn:()=>true}
     ]});
@@ -2257,7 +2327,6 @@ function adminLogin(){
 buildNav();
 if(!DB.settings.brands)DB.settings.brands=['INGCO','Total','Stanley','Bosch','دباس'];
 if(DB.settings.adminPass===undefined)DB.settings.adminPass='admin';
-document.getElementById('roleBadge').textContent=DB.settings.role;
 setLogos();
 setFavicon();
 CART=loadCart();
