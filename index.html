@@ -649,6 +649,9 @@ html.dark .pd-thumb{background-color:#1B2742}
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg></button>
       <div class="sf-brand"><div class="sf-logo" id="sfLogo"></div><b data-i18n="brand">مؤسسة الصداقة</b></div>
       <button class="sf-ic lang-btn" id="langBtn" onclick="toggleLang()" aria-label="اللغة">FR</button>
+      <button class="sf-ic" onclick="openNotifications()" aria-label="الإشعارات" style="position:relative">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+        <span class="sn-badge" id="notifBadge" style="display:none">0</span></button>
       <button class="sf-ic" onclick="openCart()" aria-label="السلة">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="20" r="1.6"/><circle cx="17" cy="20" r="1.6"/><path d="M2 3h3l2.5 12.5a1.6 1.6 0 0 0 1.6 1.3h8.3a1.6 1.6 0 0 0 1.6-1.2L22 7H6"/></svg>
         <span class="sn-badge" id="cartCountHero" style="display:none">0</span></button>
@@ -924,6 +927,10 @@ function cloudAddRegistration(reg){ if(!FS)return Promise.reject('no-cloud'); re
 function cloudFetchRegistrations(){ if(!FS)return Promise.resolve(null); return FS.collection('registrations').get().then(s=>s.docs.map(d=>d.data())); }
 function cloudSetReg(id,patch){ if(!FS)return Promise.resolve(); return FS.collection('registrations').doc(String(id)).set(patch,{merge:true}); }
 function cloudDelReg(id){ if(!FS)return Promise.resolve(); return FS.collection('registrations').doc(String(id)).delete(); }
+/* الإشعارات / العروض للزبائن */
+function cloudAddAnnouncement(a){ if(!FS)return Promise.reject('no-cloud'); return FS.collection('announcements').doc(String(a.id)).set(a); }
+function cloudFetchAnnouncements(){ if(!FS)return Promise.resolve(null); return FS.collection('announcements').get().then(s=>s.docs.map(d=>d.data())); }
+function cloudDelAnnouncement(id){ if(!FS)return Promise.resolve(); return FS.collection('announcements').doc(String(id)).delete(); }
 function refreshViews(){
   try{
     const sf=document.getElementById('storefront');
@@ -969,6 +976,19 @@ function cloudInit(){
     _firstMetaSync=false;
     setSync('ok');
   }, e=>{setSync('err');console.warn('snap meta',e);});
+  /* الإشعارات/العروض: تحديث حيّ */
+  try{
+    FS.collection('announcements').onSnapshot(snap=>{
+      const list=snap.docs.map(d=>d.data()).filter(a=>a&&a.active!==false);
+      list.sort((a,b)=>new Date(b.date)-new Date(a.date));
+      window._ann=list;
+      if(typeof updateNotifBadge==='function')updateNotifBadge();
+      const newest=list[0];
+      if(newest&&window._annInit){const seen=Number(localStorage.getItem('sadaqa_seen_notif')||0);
+        if(new Date(newest.date).getTime()>seen){try{toast('📢 '+(newest.title||'عرض جديد'));}catch(e){}}}
+      window._annInit=true;
+    }, e=>{});
+  }catch(e){}
 }
 function uid(p){return p+'_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
 function seed(){
@@ -1034,8 +1054,8 @@ if(!DB.users||!DB.users.length){
 }
 // صلاحيات كل دور (أقسام لوحة الإدارة المسموحة)
 const ROLE_PAGES={
-  'صاحب':['dash','today','store','inventory','warehouses','sale','purchase','customers','suppliers','regs','vouchers','expenses','cash','reports','settings','users'],
-  'مدير':['dash','today','store','inventory','warehouses','sale','purchase','customers','suppliers','regs','vouchers','expenses','cash','reports','settings','users'],
+  'صاحب':['dash','today','store','inventory','warehouses','sale','purchase','customers','suppliers','regs','vouchers','expenses','cash','reports','notify','settings','users'],
+  'مدير':['dash','today','store','inventory','warehouses','sale','purchase','customers','suppliers','regs','vouchers','expenses','cash','reports','notify','settings','users'],
   'محاسب':['dash','today','customers','suppliers','regs','vouchers','expenses','cash','reports'],
   'مسيّر':['today','store','inventory','warehouses','sale','purchase'],
 };
@@ -1238,6 +1258,7 @@ const PAGES=[
   {id:'expenses',t:'المصروفات',sub:'تسجيل ومتابعة المصاريف',icon:I.expense},
   {id:'cash',t:'الصندوق',sub:'الوارد والصادر والرصيد',icon:I.wallet},
   {id:'reports',t:'التقارير',sub:'المبيعات والأرباح والمخزون',icon:I.report},
+  {id:'notify',t:'الإشعارات والعروض',sub:'أرسل عروضاً وإشعارات لزبائنك',icon:I.alert},
   {sep:1},
   {id:'settings',t:'الإعدادات والنسخ الاحتياطي',sub:'البيانات والصلاحيات',icon:I.settings},
   {id:'users',t:'المستخدمون',sub:'حسابات الدخول وكلمات السر والأدوار',icon:I.people},
@@ -1295,7 +1316,7 @@ function closeDrawer(){document.getElementById('drawer').classList.remove('open'
 function render(){
   const v=document.getElementById('view');
   ({dash:vDash,store:vStore,inventory:vInventory,warehouses:vWarehouses,sale:vSale,today:vToday,purchase:vPurchase,customers:vCustomers,
-    suppliers:vSuppliers,regs:vRegs,vouchers:vVouchers,expenses:vExpenses,cash:vCash,reports:vReports,settings:vSettings,users:vUsers}[current]||vDash)(v);
+    suppliers:vSuppliers,regs:vRegs,vouchers:vVouchers,expenses:vExpenses,cash:vCash,reports:vReports,notify:vNotify,settings:vSettings,users:vUsers}[current]||vDash)(v);
   if(typeof renderMiniInv==='function')renderMiniInv();
   if(typeof renderMiniPur==='function')renderMiniPur();
 }
@@ -3308,6 +3329,71 @@ function regSendCode(id){const r=regFind(id);if(!r)return;const code=r.code||Str
 function regToCustomer(id,silent){const r=regFind(id);if(!r)return;const exists=DB.customers.find(c=>digitsOnly(c.phone)===digitsOnly(r.phone)&&(c.cc||'222')===(r.cc||'222'));if(exists){if(!silent)toast('الزبون موجود مسبقاً في العملاء','ok');return;}DB.customers.push({id:uid('c'),name:r.name,cc:r.cc||'222',phone:r.phone,phone2:'',fax:'',address:'',image:r.image||'',balance:0});save();if(!silent)toast('تمت إضافته إلى العملاء','ok');}
 function regDelete(id){confirmDlg('حذف التسجيل؟','سيُحذف طلب التسجيل نهائياً.',()=>{_regsCache=(_regsCache||[]).filter(r=>r.id!==id);DB.registrations=(DB.registrations||[]).filter(r=>r.id!==id);cloudDelReg(id).catch(()=>{});save();regRerender();toast('تم الحذف','ok');});}
 
+/* ---------- الإشعارات والعروض ---------- */
+let _annCache=null,_annImg=null;
+function vNotify(v){
+  _annImg=null;
+  v.innerHTML=`
+  <div class="panel" style="margin-bottom:16px"><div class="panel-h">${svg(I.alert,18)}<h3>إرسال إشعار / عرض للزبائن</h3></div>
+    <div style="padding:16px">
+      <div class="field"><label>العنوان</label><input class="inp" id="an_title" placeholder="مثال: تخفيضات نهاية الأسبوع!"></div>
+      <div class="field" style="margin-top:10px"><label>نص الإشعار</label><textarea class="inp" id="an_body" style="min-height:90px" placeholder="اكتب تفاصيل العرض..."></textarea></div>
+      <div class="field" style="margin-top:10px"><label>صورة (اختياري)</label>
+        <div id="an_imgPrev" onclick="document.getElementById('an_img').click()" style="height:110px;border:1px dashed var(--line);border-radius:12px;display:grid;place-items:center;color:var(--ink);cursor:pointer;background:var(--surface-2,#f1f5f9) center/cover no-repeat">${svg(I.upload,18)} <span style="margin-inline-start:6px">إرفاق صورة</span></div>
+        <input type="file" id="an_img" accept="image/*" class="hidden" onchange="pickAnnImg(this)"></div>
+      <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
+        <button class="btn btn-primary" onclick="publishAnnouncement()">${svg(I.check,16)} نشر الإشعار للزبائن</button>
+        <button class="btn" style="color:#16a34a" onclick="annWhatsAppBroadcast()">${svg(I.wa,16)} إرسال عبر واتساب</button>
+      </div>
+      <p class="muted" style="font-size:12px;margin-top:10px">«نشر الإشعار» يجعله يظهر لكل زبون عند فتحه المتجر (جرس الإشعارات). «واتساب» يرسله مباشرة لزبون مُختار فيصله فوراً.</p>
+    </div>
+  </div>
+  <div class="panel"><div class="panel-h">${svg(I.report,18)}<h3>الإشعارات المنشورة</h3><div class="spacer" style="flex:1"></div><button class="btn btn-sm" onclick="annRefresh()">${svg(I.undo,14)} تحديث</button></div>
+    <div style="padding:14px 16px" id="annList">${_annCache?annListHtml(_annCache):'<div class="muted" style="padding:10px">جارٍ التحميل...</div>'}</div>
+  </div>`;
+  annRefresh();
+}
+function pickAnnImg(input){const f=input.files[0];if(!f)return;downscaleImage(f,uri=>{if(!uri){toast('تعذّر قراءة الصورة','err');return;}_annImg=uri;const p=document.getElementById('an_imgPrev');if(p){p.style.backgroundImage=`url(${uri})`;p.innerHTML='';}});input.value='';}
+function publishAnnouncement(){
+  const title=(val('an_title')||'').trim();const body=(val('an_body')||'').trim();
+  if(!title&&!body){toast('اكتب عنواناً أو نصاً','err');return;}
+  const a={id:uid('ann'),title,body,image:_annImg||'',date:new Date().toISOString(),active:true};
+  cloudAddAnnouncement(a).then(()=>toast('تم نشر الإشعار للزبائن','ok')).catch(()=>toast('تعذّر النشر — تحقّق من الإنترنت','err'));
+  _annCache=[a,...(_annCache||[])];
+  const el=document.getElementById('annList');if(el)el.innerHTML=annListHtml(_annCache);
+  const ti=document.getElementById('an_title');if(ti)ti.value='';const bo=document.getElementById('an_body');if(bo)bo.value='';_annImg=null;
+  const p=document.getElementById('an_imgPrev');if(p){p.style.backgroundImage='';p.innerHTML=svg(I.upload,18)+' <span style="margin-inline-start:6px">إرفاق صورة</span>';}
+}
+function annRefresh(){
+  const fill=list=>{_annCache=(list||[]).slice().sort((a,b)=>new Date(b.date)-new Date(a.date));const el=document.getElementById('annList');if(el)el.innerHTML=annListHtml(_annCache);};
+  const p=cloudFetchAnnouncements();
+  if(p&&p.then)p.then(list=>{if(list===null)fill(window._ann||_annCache||[]);else fill(list);}).catch(()=>fill(_annCache||[]));
+  else fill(window._ann||[]);
+}
+function annListHtml(list){
+  if(!list||!list.length)return `<div class="empty" style="padding:24px">${svg(I.alert,34)}<b>لا إشعارات منشورة بعد</b></div>`;
+  return list.map(a=>`<div style="display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:8px">
+    ${a.image?`<span style="width:46px;height:46px;border-radius:8px;flex:0 0 auto;background:#e5e7eb center/cover no-repeat;background-image:url(${a.image})"></span>`:''}
+    <div style="flex:1"><b style="font-size:13.5px">${esc(a.title||'')}</b><div style="font-size:12px;color:var(--muted);margin-top:3px;white-space:pre-wrap">${esc(a.body||'')}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">${fmtDateTime(a.date)}</div></div>
+    <button class="btn btn-icon btn-ghost btn-sm" title="حذف" onclick="delAnnouncement('${a.id}')">${svg(I.trash,15)}</button>
+  </div>`).join('');
+}
+function delAnnouncement(id){confirmDlg('حذف الإشعار؟','لن يظهر للزبائن بعد الآن.',()=>{_annCache=(_annCache||[]).filter(a=>a.id!==id);cloudDelAnnouncement(id).catch(()=>{});const el=document.getElementById('annList');if(el)el.innerHTML=annListHtml(_annCache);toast('تم الحذف','ok');});}
+function annWhatsAppBroadcast(){
+  const title=(val('an_title')||'').trim();const body=(val('an_body')||'').trim();
+  if(!title&&!body){toast('اكتب العرض أولاً','err');return;}
+  const text=(title?('*'+title+'*\n'):'')+body+`\n\n${DB.settings.name||'مؤسسة الصداقة'}`;
+  window._annText=text;
+  const customers=DB.customers.filter(c=>c.phone);
+  const list=customers.length?customers.map(c=>`<div class="set-row"><div><b>${esc(c.name)}</b><span dir="ltr">+${esc(c.cc||'222')} ${esc(c.phone||'')}</span></div>
+    <button class="btn btn-sm" style="background:#16a34a;color:#fff;border-color:#16a34a" onclick="waOpen('${waNum(c.cc,c.phone)}',window._annText)">${svg(I.wa,14)} إرسال</button></div>`).join(''):'<div class="muted" style="padding:10px">لا عملاء بأرقام بعد. أكّد تسجيلات الزبائن أولاً.</div>';
+  modal({title:'إرسال العرض عبر واتساب',size:'lg',body:`<p class="muted" style="font-size:12.5px;margin-bottom:10px">اختر الزبون لإرسال العرض له عبر واتساب (يصله فوراً).</p>
+    <div style="background:var(--surface-2,#f1f5f9);border-radius:10px;padding:11px;margin-bottom:12px;font-size:13px;white-space:pre-wrap;color:var(--ink)">${esc(text)}</div>
+    <div class="set-list">${list}</div>`,
+    actions:[{label:'نسخ النص',fn:()=>{copyText(window._annText);return false;}},{label:t('close'),fn:()=>true}]});
+}
+
 /* ---------- الإعدادات / النسخ الاحتياطي ---------- */
 function vSettings(v){
   v.innerHTML=`
@@ -4190,6 +4276,26 @@ function openFavorites(){
     </div>`;}).join('')}</div>`
     :`<div class="empty" style="padding:30px 10px">${svg(I.heart,42)}<b>${t('favEmpty')}</b></div>`;
   modal({title:t('favorites'),body,actions:[{label:t('close'),fn:()=>true}]});
+}
+function updateNotifBadge(){
+  const list=window._ann||[];
+  const seen=Number(localStorage.getItem('sadaqa_seen_notif')||0);
+  const unread=list.filter(a=>new Date(a.date).getTime()>seen).length;
+  const b=document.getElementById('notifBadge');
+  if(b){b.textContent=unread;b.style.display=unread>0?'flex':'none';}
+}
+function openNotifications(){
+  const list=window._ann||[];
+  if(list.length)localStorage.setItem('sadaqa_seen_notif',String(Date.now()));
+  updateNotifBadge();
+  const body=list.length?list.map(a=>`<div style="border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-bottom:12px">
+    ${a.image?`<img src="${a.image}" style="width:100%;display:block">`:''}
+    <div style="padding:11px 13px">
+      <b style="font-size:14.5px;color:var(--ink)">${esc(a.title||'')}</b>
+      ${a.body?`<p style="font-size:13px;color:var(--muted);margin-top:5px;white-space:pre-wrap;line-height:1.7">${esc(a.body)}</p>`:''}
+      <div style="font-size:11px;color:var(--muted);margin-top:7px">${fmtDateTime(a.date)}</div>
+    </div></div>`).join(''):`<div class="empty" style="padding:34px">${svg(I.alert,40)}<b>لا إشعارات بعد</b><span>ستظهر هنا عروض المتجر وإشعاراته</span></div>`;
+  modal({title:'الإشعارات والعروض',size:'lg',body,actions:[{label:t('close'),fn:()=>true}]});
 }
 function getVisitor(){try{return JSON.parse(localStorage.getItem('sadaqa_visitor')||'null');}catch(e){return null;}}
 function setVisitor(v){try{localStorage.setItem('sadaqa_visitor',JSON.stringify(v));}catch(e){}}
