@@ -4038,14 +4038,26 @@ function checkoutWhatsApp(){
 }
 function openCheckout(num){
   _coords=null;_payProof=null;
+  const v=getVisitor()||{};
+  const reg=!!(v&&v.name&&v.phone);
   const pays=(DB.settings.payments||[]).filter(Boolean);
   const total=CART.reduce((a,l)=>a+l.price*l.qty,0);
   modal({title:t('checkoutTitle'),size:'lg',body:`
     <div style="background:var(--primary-soft);color:var(--primary-d);border-radius:12px;padding:11px 14px;margin-bottom:14px;display:flex;justify-content:space-between;font-weight:800;font-size:15px">
       <span>${t('total')}</span><span>${money(total)} ${CUR()}</span></div>
-    <div class="grid2">
-      <div class="field"><label>${t('coName')} *</label><input class="inp" id="co_name" value="${esc(DB.settings.guestName||'')}"></div>
-      <div class="field"><label>${t('coPhone')} *</label><input class="inp" id="co_phone" type="tel" inputmode="tel" placeholder="06 / 07 ..."></div>
+    ${reg?`<div style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:12px;padding:10px 13px;margin-bottom:12px;font-size:13px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <span style="color:#15803D;font-weight:800">✓ بياناتك مسجّلة</span>
+      <span>${esc(v.name)} · <span dir="ltr">+${esc(v.cc||'222')} ${esc(v.phone)}</span></span>
+      <button type="button" class="btn btn-xs" style="margin-inline-start:auto" onclick="document.getElementById('coInfo').classList.toggle('hidden')">تغيير</button>
+    </div>`:''}
+    <div id="coInfo" class="${reg?'hidden':''}">
+      <div class="grid2">
+        <div class="field"><label>${t('coName')} *</label><input class="inp" id="co_name" value="${esc(v.name||DB.settings.guestName||'')}"></div>
+        <div class="field"><label>${t('coPhone')} *</label>
+          <div style="display:flex;gap:6px"><select class="inp" id="co_cc" style="max-width:120px">${ccOptions(v.cc||'222')}</select>
+          <input class="inp" id="co_phone" type="tel" inputmode="tel" placeholder="رقم الهاتف" value="${esc(v.phone||'')}" style="flex:1"></div>
+        </div>
+      </div>
     </div>
     <div class="field"><label>${t('coAddr')}</label><input class="inp" id="co_addr"></div>
     <div class="field"><label>${t('coPay')}</label><select class="inp" id="co_pay">${pays.length?pays.map(p=>`<option>${esc(p)}</option>`).join(''):`<option>${t('coPayDef')}</option>`}</select></div>
@@ -4053,13 +4065,9 @@ function openCheckout(num){
       <button type="button" class="btn" id="co_locBtn" style="width:100%;justify-content:center" onclick="getCheckoutLocation()">${svg(I.store,16)} <span id="co_locTxt">${t('coLocBtn')}</span></button>
       <div id="co_locMsg" style="font-size:12.5px;margin-top:6px;color:var(--muted)"></div>
     </div>
-    <div class="field"><label>${t('coProof')}</label>
-      <div id="co_proofPrev" onclick="document.getElementById('co_proof').click()" style="height:92px;border:1px dashed var(--line);border-radius:12px;display:grid;place-items:center;color:var(--muted);font-size:12.5px;cursor:pointer;background:#f8fafc center/cover no-repeat">${svg(I.upload,18)} <span style="margin-inline-start:6px">${t('coProofBtn')}</span></div>
-      <input type="file" id="co_proof" accept="image/*" class="hidden" onchange="pickPayProof(this)">
-    </div>
     <div class="field"><label>${t('coNote')}</label><textarea class="inp" id="co_note" style="min-height:60px"></textarea></div>
   `,actions:[
-    {label:t('coSend'),primary:true,fn:()=>submitCheckout(num,total)},
+    {label:'متابعة للدفع ›',primary:true,fn:()=>submitCheckout(num,total)},
     {label:t('close'),fn:()=>true}
   ]});
   setTimeout(getCheckoutLocation,300);
@@ -4084,19 +4092,68 @@ function pickPayProof(input){
   input.value='';
 }
 function submitCheckout(num,total){
-  const name=(val('co_name')||'').trim();const phone=(val('co_phone')||'').trim();
-  if(!name||!phone){toast(t('coNeed'),'err');return false;}
-  const addr=(val('co_addr')||'').trim();const pay=val('co_pay')||'';const note=(val('co_note')||'').trim();
+  const name=(val('co_name')||'').trim();const cc=val('co_cc')||'222';const phone=(val('co_phone')||'').trim();
+  if(!name||!phone){toast(t('coNeed'),'err');const ci=document.getElementById('coInfo');if(ci)ci.classList.remove('hidden');return false;}
+  // حفظ/تحديث بيانات الزائر تلقائياً
+  const v=getVisitor()||{};
+  setVisitor({id:v.id||uid('reg'),name,cc,phone,verified:v.verified||false});
+  const ctx={num,total,name,cc,phone,addr:(val('co_addr')||'').trim(),pay:val('co_pay')||'',note:(val('co_note')||'').trim(),coords:_coords};
+  setTimeout(()=>openPaymentStep(ctx),70);
+  return true;
+}
+function copyText(txt){txt=String(txt);const done=()=>toast('تم النسخ ✓','ok');
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(txt).then(done).catch(()=>fallbackCopy(txt,done));}
+  else fallbackCopy(txt,done);}
+function fallbackCopy(txt,cb){const ta=document.createElement('textarea');ta.value=txt;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.focus();ta.select();try{document.execCommand('copy');cb&&cb();}catch(e){}ta.remove();}
+function openPaymentStep(ctx){
+  _payProof=null;
+  const payNum=DB.settings.payNumber||'20108565';
+  const amt=ctx.total;
+  modal({title:'الدفع وإرسال الطلب',size:'lg',body:`
+    <div style="border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-bottom:14px">
+      <div style="background:var(--primary);color:#fff;padding:9px 14px;font-weight:800;font-size:14px">🧾 ملخّص طلبك (${esc(ctx.name)})</div>
+      <div style="padding:8px 14px">
+        ${CART.map(l=>`<div style="display:flex;justify-content:space-between;font-size:13px;padding:5px 0;border-bottom:1px dashed var(--line)"><span>${esc(l.name)} × ${l.qty}</span><b>${money(l.price*l.qty)} ${CUR()}</b></div>`).join('')}
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px">
+          <span style="font-weight:800;font-size:14px">المبلغ المطلوب</span>
+          <span style="display:flex;align-items:center;gap:8px"><b style="font-size:18px;color:var(--primary-d)">${money(amt)} ${CUR()}</b>
+          <button class="btn btn-xs" onclick="copyText('${amt}')">نسخ</button></span>
+        </div>
+      </div>
+    </div>
+    <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:14px;padding:14px;margin-bottom:14px;text-align:center">
+      <div style="font-size:13px;color:#1E3A8A;margin-bottom:6px">💳 حوّل المبلغ عبر تطبيقات الدفع إلى الرقم الموحّد:</div>
+      <div style="font-size:25px;font-weight:800;letter-spacing:1px;direction:ltr;color:#0f172a">${esc(payNum)}</div>
+      <div style="display:flex;gap:8px;justify-content:center;margin-top:10px;flex-wrap:wrap">
+        <button class="btn btn-sm btn-primary" onclick="copyText('${esc(payNum)}')">📋 نسخ الرقم</button>
+        <button class="btn btn-sm" onclick="copyText('${amt}')">نسخ المبلغ</button>
+      </div>
+      <div class="muted" style="font-size:11.5px;margin-top:9px">Bankily · Masrvi · Sedad · Amanty · BimBank · Click</div>
+    </div>
+    <div class="field"><label>إثبات الدفع (صورة التحويل)</label>
+      <div id="co_proofPrev" onclick="document.getElementById('co_proof').click()" style="height:96px;border:1px dashed var(--line);border-radius:12px;display:grid;place-items:center;color:var(--muted);font-size:12.5px;cursor:pointer;background:#f8fafc center/cover no-repeat">${svg(I.upload,18)} <span style="margin-inline-start:6px">إرفاق صورة إثبات الدفع</span></div>
+      <input type="file" id="co_proof" accept="image/*" class="hidden" onchange="pickPayProof(this)">
+    </div>
+    <p class="muted" style="font-size:12px">انسخ الرقم وحوّل المبلغ من تطبيق الدفع، ثم أرفق صورة الإثبات (اختياري) واضغط إرسال الطلب.</p>
+  `,actions:[
+    {label:'إرسال الطلب عبر واتساب',primary:true,icon:I.wa,fn:()=>{sendOrderWa(ctx);return true;}},
+    {label:t('close'),fn:()=>true}
+  ]});
+}
+function sendOrderWa(ctx){
+  const payNum=DB.settings.payNumber||'20108565';
   let txt='*'+t('orderMsg')+'*\n\n';
-  txt+=`*${t('coCustomer')}:* ${name}\n*${t('coPhone')}:* ${phone}\n`;
-  if(addr)txt+=`*${t('coAddr')}:* ${addr}\n`;
-  if(pay)txt+=`*${t('coPay')}:* ${pay}\n`;
+  txt+=`*${t('coCustomer')}:* ${ctx.name}\n*${t('coPhone')}:* +${ctx.cc} ${ctx.phone}\n`;
+  if(ctx.addr)txt+=`*${t('coAddr')}:* ${ctx.addr}\n`;
+  if(ctx.pay)txt+=`*${t('coPay')}:* ${ctx.pay}\n`;
   txt+=`\n*${t('coItems')}:*\n`;
   CART.forEach(l=>{txt+=`• ${l.name} — ${l.qty} × ${money(l.price)} = ${money(l.price*l.qty)} ${CUR()}\n`;});
-  txt+=`\n*${t('orderTotal')}: ${money(total)} ${CUR()}*\n`;
-  if(_coords)txt+=`\n*${t('coLocLabel')}:* https://maps.google.com/?q=${_coords.lat},${_coords.lng}\n`;
-  if(note)txt+=`\n*${t('coNote')}:* ${note}\n`;
+  txt+=`\n*${t('orderTotal')}: ${money(ctx.total)} ${CUR()}*\n`;
+  txt+=`💳 رقم الدفع الموحّد: ${payNum}\n`;
+  if(ctx.coords)txt+=`\n*${t('coLocLabel')}:* https://maps.google.com/?q=${ctx.coords.lat},${ctx.coords.lng}\n`;
+  if(ctx.note)txt+=`\n*${t('coNote')}:* ${ctx.note}\n`;
   if(_payProof)txt+=`\n${t('coProofNote')}\n`;
+  const num=ctx.num;
   const sendLink=()=>window.open(`https://wa.me/${num}?text=${encodeURIComponent(txt)}`,'_blank');
   if(_payProof&&navigator.canShare){
     fetch(_payProof).then(r=>r.blob()).then(blob=>{
@@ -4106,7 +4163,6 @@ function submitCheckout(num,total){
     }).catch(()=>sendLink());
   }else sendLink();
   toast(t('coReady'),'ok');
-  return true;
 }
 function openWhatsApp(){
   const num=(DB.settings.whatsapp||'').replace(/[^0-9]/g,'');
