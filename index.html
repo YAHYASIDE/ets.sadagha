@@ -721,6 +721,10 @@ html.dark .pd-thumb{background-color:#1B2742}
       <div class="menu-name">زائر</div>
     </div>
     <div class="menu-list">
+      <button class="menu-item" onclick="closeStoreMenu();visitorRegister()">
+        <span class="mlabel">سجّل بياناتك / حسابي</span>
+        <span class="micon" style="background:#E5EDFF;color:#1D4ED8"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><circle cx="12" cy="8" r="3.4"/><path d="M5 20a7 7 0 0 1 14 0"/></svg></span>
+      </button>
       <button class="menu-item" onclick="closeStoreMenu();openCart()">
         <span class="mlabel" data-i18n="mOrders">طلباتي</span>
         <span class="micon" style="background:#FEF3E2;color:#C2710C">${''}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><circle cx="9" cy="20" r="1.6"/><circle cx="17" cy="20" r="1.6"/><path d="M2 3h3l2.5 12.5a1.6 1.6 0 0 0 1.6 1.3h8.3a1.6 1.6 0 0 0 1.6-1.2L22 7H6"/></svg></span>
@@ -914,6 +918,11 @@ function cloudPutMeta(){
     categories:DB.categories||[], catUnits:DB.catUnits||{}, warehouses:DB.warehouses||[], services:DB.services||[], settings:pubSettings(), _ts:_metaTs
   }).then(()=>setSync('ok')).catch(e=>{setSync('err');console.warn('put meta',e);});
 }
+/* تسجيلات الزبائن من المتجر (مجموعة مستقلة في السحابة) */
+function cloudAddRegistration(reg){ if(!FS)return Promise.reject('no-cloud'); return FS.collection('registrations').doc(String(reg.id)).set(reg); }
+function cloudFetchRegistrations(){ if(!FS)return Promise.resolve(null); return FS.collection('registrations').get().then(s=>s.docs.map(d=>d.data())); }
+function cloudSetReg(id,patch){ if(!FS)return Promise.resolve(); return FS.collection('registrations').doc(String(id)).set(patch,{merge:true}); }
+function cloudDelReg(id){ if(!FS)return Promise.resolve(); return FS.collection('registrations').doc(String(id)).delete(); }
 function refreshViews(){
   try{
     const sf=document.getElementById('storefront');
@@ -1007,6 +1016,7 @@ if(!DB.services)DB.services=[{id:'svc_ship',name:'شحن',price:0},{id:'svc_run'
 if(!DB.custPays)DB.custPays=[];
 if(!DB.vouchers)DB.vouchers=[];
 if(!DB.trash)DB.trash=[];
+if(!DB.registrations)DB.registrations=[];
 if(!DB.settings.payNumber)DB.settings.payNumber='20108565';
 if(DB.seq&&!DB.seq.voucher)DB.seq.voucher=1;
 if(!DB.settings.whatsapp)DB.settings.whatsapp='22222227268';
@@ -1023,9 +1033,9 @@ if(!DB.users||!DB.users.length){
 }
 // صلاحيات كل دور (أقسام لوحة الإدارة المسموحة)
 const ROLE_PAGES={
-  'صاحب':['dash','today','store','inventory','warehouses','sale','purchase','customers','suppliers','vouchers','expenses','cash','reports','settings','users'],
-  'مدير':['dash','today','store','inventory','warehouses','sale','purchase','customers','suppliers','vouchers','expenses','cash','reports','settings','users'],
-  'محاسب':['dash','today','customers','suppliers','vouchers','expenses','cash','reports'],
+  'صاحب':['dash','today','store','inventory','warehouses','sale','purchase','customers','suppliers','regs','vouchers','expenses','cash','reports','settings','users'],
+  'مدير':['dash','today','store','inventory','warehouses','sale','purchase','customers','suppliers','regs','vouchers','expenses','cash','reports','settings','users'],
+  'محاسب':['dash','today','customers','suppliers','regs','vouchers','expenses','cash','reports'],
   'مسيّر':['today','store','inventory','warehouses','sale','purchase'],
 };
 let CUR_USER=null;
@@ -1222,6 +1232,7 @@ const PAGES=[
   {sep:1},
   {id:'customers',t:'العملاء',sub:'الأرصدة وكشوف الحسابات',icon:I.people},
   {id:'suppliers',t:'الموردون',sub:'المشتريات والمستحقات',icon:I.truck},
+  {id:'regs',t:'تسجيلات الزبائن',sub:'طلبات تسجيل من المتجر وتأكيدها',icon:I.phone},
   {id:'vouchers',t:'سندات القبض والدفع',sub:'إيصالات قبض وصرف لكل الحسابات',icon:I.wallet},
   {id:'expenses',t:'المصروفات',sub:'تسجيل ومتابعة المصاريف',icon:I.expense},
   {id:'cash',t:'الصندوق',sub:'الوارد والصادر والرصيد',icon:I.wallet},
@@ -1283,7 +1294,7 @@ function closeDrawer(){document.getElementById('drawer').classList.remove('open'
 function render(){
   const v=document.getElementById('view');
   ({dash:vDash,store:vStore,inventory:vInventory,warehouses:vWarehouses,sale:vSale,today:vToday,purchase:vPurchase,customers:vCustomers,
-    suppliers:vSuppliers,vouchers:vVouchers,expenses:vExpenses,cash:vCash,reports:vReports,settings:vSettings,users:vUsers}[current]||vDash)(v);
+    suppliers:vSuppliers,regs:vRegs,vouchers:vVouchers,expenses:vExpenses,cash:vCash,reports:vReports,settings:vSettings,users:vUsers}[current]||vDash)(v);
   if(typeof renderMiniInv==='function')renderMiniInv();
   if(typeof renderMiniPur==='function')renderMiniPur();
 }
@@ -3253,6 +3264,49 @@ function phoneDirectory(){
   window._pdRender=render;
 }
 
+/* ---------- تسجيلات الزبائن من المتجر ---------- */
+let _regsCache=null;
+function vRegs(v){
+  v.innerHTML=`<div class="panel"><div class="panel-h">${svg(I.phone,18)}<h3>تسجيلات الزبائن من المتجر</h3>
+    <div class="spacer" style="flex:1"></div>
+    <button class="btn btn-sm" onclick="regsRefresh()">${svg(I.undo,14)} تحديث</button></div>
+    <div style="padding:14px 16px"><p class="muted" style="font-size:12.5px;margin-bottom:10px">
+      عند تسجيل أي زبون من المتجر تصلك منه رسالة واتساب فيها كود التأكيد. تحقّق أن الرسالة وصلت من نفس الرقم ثم اضغط «تأكيد»، أو أرسل له كوداً عبر واتساب ليؤكّد رقمه.</p>
+      <div id="regsList">${_regsCache?regsTable(_regsCache):'<div class="muted" style="padding:14px">جارٍ التحميل من السحابة...</div>'}</div>
+    </div></div>`;
+  regsRefresh();
+}
+function regsRefresh(){
+  const fill=list=>{_regsCache=(list||[]).slice();const el=document.getElementById('regsList');if(el)el.innerHTML=regsTable(_regsCache);};
+  const p=cloudFetchRegistrations();
+  if(p&&p.then){p.then(list=>{if(list===null){fill(DB.registrations||[]);}else{DB.registrations=list;save();fill(list);}}).catch(()=>fill(DB.registrations||[]));}
+  else fill(DB.registrations||[]);
+}
+function regsTable(list){
+  list=(list||[]).slice().sort((a,b)=>new Date(b.date)-new Date(a.date));
+  if(!list.length)return `<div class="empty" style="padding:30px">${svg(I.people,38)}<b>لا تسجيلات بعد</b>ستظهر هنا تسجيلات الزبائن من المتجر</div>`;
+  return `<div class="tbl-wrap"><table style="font-size:13px"><thead><tr><th>الاسم</th><th>الهاتف</th><th>الكود</th><th>التاريخ</th><th>الحالة</th><th></th></tr></thead><tbody>
+    ${list.map(r=>`<tr>
+      <td><b>${esc(r.name)}</b></td>
+      <td class="t-num" dir="ltr">+${esc(r.cc||'222')} ${esc(r.phone||'')}</td>
+      <td class="t-num">${esc(r.code||'—')}</td>
+      <td class="muted" style="font-size:11.5px">${fmtDateTime(r.date)}</td>
+      <td>${r.verified?'<span class="badge b-ok">مؤكَّد</span>':'<span class="badge" style="background:#FEF3C7;color:#92400E">بانتظار</span>'}</td>
+      <td style="white-space:nowrap;text-align:end">
+        ${r.verified?'':`<button class="btn btn-sm btn-primary" onclick="regVerify('${r.id}')">${svg(I.check,13)} تأكيد</button>`}
+        <button class="btn btn-icon btn-ghost btn-sm" title="إرسال كود عبر واتساب" style="color:#16a34a" onclick="regSendCode('${r.id}')">${svg(I.wa,15)}</button>
+        <button class="btn btn-icon btn-ghost btn-sm" title="إضافة كزبون" onclick="regToCustomer('${r.id}')">${svg(I.plus,15)}</button>
+        <button class="btn btn-icon btn-ghost btn-sm" title="حذف" onclick="regDelete('${r.id}')">${svg(I.trash,15)}</button>
+      </td></tr>`).join('')}
+  </tbody></table></div>`;
+}
+function regFind(id){return (_regsCache||DB.registrations||[]).find(r=>r.id===id);}
+function regRerender(){const el=document.getElementById('regsList');if(el)el.innerHTML=regsTable(_regsCache);}
+function regVerify(id){const r=regFind(id);if(!r)return;r.verified=true;cloudSetReg(id,{verified:true}).catch(()=>{});regToCustomer(id,true);toast('تم تأكيد الزبون وإضافته للعملاء','ok');regRerender();}
+function regSendCode(id){const r=regFind(id);if(!r)return;const code=r.code||String(Math.floor(1000+Math.random()*9000));r.code=code;cloudSetReg(id,{code}).catch(()=>{});waOpen(waNum(r.cc,r.phone),`مرحباً ${r.name}، كود التأكيد الخاص بك في ${DB.settings.name||'مؤسسة الصداقة'}: ${code}`);}
+function regToCustomer(id,silent){const r=regFind(id);if(!r)return;const exists=DB.customers.find(c=>digitsOnly(c.phone)===digitsOnly(r.phone)&&(c.cc||'222')===(r.cc||'222'));if(exists){if(!silent)toast('الزبون موجود مسبقاً في العملاء','ok');return;}DB.customers.push({id:uid('c'),name:r.name,cc:r.cc||'222',phone:r.phone,phone2:'',fax:'',address:'',image:'',balance:0});save();if(!silent)toast('تمت إضافته إلى العملاء','ok');}
+function regDelete(id){confirmDlg('حذف التسجيل؟','سيُحذف طلب التسجيل نهائياً.',()=>{_regsCache=(_regsCache||[]).filter(r=>r.id!==id);DB.registrations=(DB.registrations||[]).filter(r=>r.id!==id);cloudDelReg(id).catch(()=>{});save();regRerender();toast('تم الحذف','ok');});}
+
 /* ---------- الإعدادات / النسخ الاحتياطي ---------- */
 function vSettings(v){
   v.innerHTML=`
@@ -3746,6 +3800,7 @@ function showStore(){
   document.getElementById('storefront').classList.remove('hidden');
   document.getElementById('storeNav').classList.remove('hidden');
   applyDark();applyLang();window.scrollTo(0,0);
+  if(!getVisitor()&&!window._regPrompted){window._regPrompted=true;setTimeout(()=>{if(!getVisitor()&&document.getElementById('storefront')&&!document.getElementById('storefront').classList.contains('hidden'))visitorRegister();},1300);}
 }
 function showAdmin(){
   if(!CUR_USER){adminLogin();return;}
@@ -4077,6 +4132,40 @@ function openFavorites(){
     </div>`;}).join('')}</div>`
     :`<div class="empty" style="padding:30px 10px">${svg(I.heart,42)}<b>${t('favEmpty')}</b></div>`;
   modal({title:t('favorites'),body,actions:[{label:t('close'),fn:()=>true}]});
+}
+function getVisitor(){try{return JSON.parse(localStorage.getItem('sadaqa_visitor')||'null');}catch(e){return null;}}
+function setVisitor(v){try{localStorage.setItem('sadaqa_visitor',JSON.stringify(v));}catch(e){}}
+function storeWaNumber(){return digitsOnly(DB.settings.whatsapp||'').replace(/^0+/,'')||'22220108565';}
+function visitorRegister(){
+  const v=getVisitor()||{};
+  const done=!!(v&&v.id);
+  modal({title:done?'حسابي في المتجر':'سجّل بياناتك لدى المتجر',size:'sm',body:`
+    <p class="muted" style="font-size:13px;margin-bottom:12px">${done?'بياناتك مسجّلة. يمكنك تعديلها وإعادة التأكيد عبر واتساب.':'رجاءً أدخل اسمك الكامل ورقم هاتفك لنخدمك بشكل أفضل ونؤكّد طلباتك عبر واتساب.'}</p>
+    <div class="field"><label>الاسم الكامل</label><input class="inp" id="vrName" placeholder="مثال: محمد ولد أحمد" value="${esc(v.name||'')}"></div>
+    <div class="field" style="margin-top:10px"><label>رقم الهاتف</label>
+      <div style="display:flex;gap:8px">
+        <select class="inp" id="vrCc" style="max-width:155px">${ccOptions(v.cc||'222')}</select>
+        <input class="inp" id="vrPhone" inputmode="numeric" placeholder="رقم الهاتف" value="${esc(v.phone||'')}" style="flex:1">
+      </div>
+    </div>
+    <p class="muted" style="font-size:11.5px;margin-top:10px">${done&&v.verified?'<span style="color:#16a34a">✔ تم تأكيد رقمك.</span>':'سيتم فتح واتساب لإرسال كود التأكيد إلى المتجر — فقط اضغط إرسال.'}</p>`,
+    actions:[
+      {label:'تسجيل وتأكيد عبر واتساب',primary:true,icon:I.wa,fn:()=>{
+        const name=(val('vrName')||'').trim(); const cc=val('vrCc')||'222'; const phone=digitsOnly(val('vrPhone'));
+        if(name.length<3){toast('أدخل الاسم الكامل','err');return false;}
+        if(phone.length<6){toast('أدخل رقم هاتف صحيح','err');return false;}
+        const code=String(Math.floor(1000+Math.random()*9000));
+        const id=(v&&v.id)||uid('reg');
+        const reg={id,name,cc,phone,code,verified:false,date:new Date().toISOString(),source:'store'};
+        setVisitor({id,name,cc,phone,verified:false});
+        cloudAddRegistration(reg).catch(()=>{});
+        const msg=`السلام عليكم، أنا ${name}.\nأرغب بالتسجيل في متجر ${DB.settings.name||'مؤسسة الصداقة'}.\nرقمي: +${cc}${phone}\nكود التأكيد: ${code}`;
+        waOpen(storeWaNumber(),msg);
+        toast('تم إرسال طلب التسجيل، سنؤكّد رقمك قريباً','ok');
+        return true;
+      }},
+      {label:'لاحقاً',fn:()=>true}
+    ]});
 }
 function applyDark(){
   const on=!!DB.settings.dark;
