@@ -193,7 +193,8 @@ textarea.inp{resize:vertical;min-height:64px}
 .search .inp{padding-inline-start:36px}
 
 /* Modal */
-.overlay{position:fixed;inset:0;background:rgba(16,36,31,.42);backdrop-filter:blur(2px);z-index:60;display:grid;place-items:center;padding:16px}
+.overlay{position:fixed;inset:0;background:rgba(16,36,31,.42);backdrop-filter:blur(2px);z-index:60;display:grid;place-items:center;padding:16px;overflow:auto;overscroll-behavior:contain}
+body.modal-lock{overflow:hidden!important;touch-action:none}
 .modal{background:var(--surface);border-radius:18px;width:100%;max-width:560px;max-height:92vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 24px 60px rgba(0,0,0,.25)}
 .modal.lg{max-width:820px}
 .modal-h{padding:16px 20px;border-bottom:1px solid var(--line-2);display:flex;align-items:center;gap:12px}
@@ -3287,7 +3288,7 @@ function regsTable(list){
   if(!list.length)return `<div class="empty" style="padding:30px">${svg(I.people,38)}<b>لا تسجيلات بعد</b>ستظهر هنا تسجيلات الزبائن من المتجر</div>`;
   return `<div class="tbl-wrap"><table style="font-size:13px"><thead><tr><th>الاسم</th><th>الهاتف</th><th>الكود</th><th>التاريخ</th><th>الحالة</th><th></th></tr></thead><tbody>
     ${list.map(r=>`<tr>
-      <td><b>${esc(r.name)}</b></td>
+      <td><div style="display:flex;align-items:center;gap:8px">${r.image?`<span style="width:30px;height:30px;border-radius:50%;flex:0 0 auto;background:#e5e7eb center/cover no-repeat;background-image:url(${r.image})"></span>`:''}<b>${esc(r.name)}</b></div></td>
       <td class="t-num" dir="ltr">+${esc(r.cc||'222')} ${esc(r.phone||'')}</td>
       <td class="t-num">${esc(r.code||'—')}</td>
       <td class="muted" style="font-size:11.5px">${fmtDateTime(r.date)}</td>
@@ -3304,7 +3305,7 @@ function regFind(id){return (_regsCache||DB.registrations||[]).find(r=>r.id===id
 function regRerender(){const el=document.getElementById('regsList');if(el)el.innerHTML=regsTable(_regsCache);}
 function regVerify(id){const r=regFind(id);if(!r)return;r.verified=true;cloudSetReg(id,{verified:true}).catch(()=>{});regToCustomer(id,true);toast('تم تأكيد الزبون وإضافته للعملاء','ok');regRerender();}
 function regSendCode(id){const r=regFind(id);if(!r)return;const code=r.code||String(Math.floor(1000+Math.random()*9000));r.code=code;cloudSetReg(id,{code}).catch(()=>{});waOpen(waNum(r.cc,r.phone),`مرحباً ${r.name}، كود التأكيد الخاص بك في ${DB.settings.name||'مؤسسة الصداقة'}: ${code}`);}
-function regToCustomer(id,silent){const r=regFind(id);if(!r)return;const exists=DB.customers.find(c=>digitsOnly(c.phone)===digitsOnly(r.phone)&&(c.cc||'222')===(r.cc||'222'));if(exists){if(!silent)toast('الزبون موجود مسبقاً في العملاء','ok');return;}DB.customers.push({id:uid('c'),name:r.name,cc:r.cc||'222',phone:r.phone,phone2:'',fax:'',address:'',image:'',balance:0});save();if(!silent)toast('تمت إضافته إلى العملاء','ok');}
+function regToCustomer(id,silent){const r=regFind(id);if(!r)return;const exists=DB.customers.find(c=>digitsOnly(c.phone)===digitsOnly(r.phone)&&(c.cc||'222')===(r.cc||'222'));if(exists){if(!silent)toast('الزبون موجود مسبقاً في العملاء','ok');return;}DB.customers.push({id:uid('c'),name:r.name,cc:r.cc||'222',phone:r.phone,phone2:'',fax:'',address:'',image:r.image||'',balance:0});save();if(!silent)toast('تمت إضافته إلى العملاء','ok');}
 function regDelete(id){confirmDlg('حذف التسجيل؟','سيُحذف طلب التسجيل نهائياً.',()=>{_regsCache=(_regsCache||[]).filter(r=>r.id!==id);DB.registrations=(DB.registrations||[]).filter(r=>r.id!==id);cloudDelReg(id).catch(()=>{});save();regRerender();toast('تم الحذف','ok');});}
 
 /* ---------- الإعدادات / النسخ الاحتياطي ---------- */
@@ -3706,8 +3707,9 @@ function modal({title,body,actions,size}){
     af.appendChild(b);
   });
   const first=root.querySelector('input,select,textarea');if(first)setTimeout(()=>first.focus(),50);
+  document.body.classList.add('modal-lock');
 }
-function closeModal(){document.getElementById('modalRoot').innerHTML='';}
+function closeModal(){document.body.classList.remove('modal-lock');document.getElementById('modalRoot').innerHTML='';}
 function confirmDlg(title,msg,onYes){
   modal({title,body:`<p style="font-size:14.5px;color:var(--muted)">${msg}</p>`,
     actions:[{label:'نعم، تأكيد',primary:true,fn:()=>{onYes();}},{label:'إلغاء',fn:()=>true}]});
@@ -3759,7 +3761,7 @@ function applyLang(){
   document.querySelectorAll('[data-i18n]').forEach(el=>{el.textContent=t(el.getAttribute('data-i18n'));});
   document.querySelectorAll('[data-i18n-ph]').forEach(el=>{el.placeholder=t(el.getAttribute('data-i18n-ph'));});
   const lb=document.getElementById('langBtn');if(lb)lb.textContent=LANG==='fr'?'ع':'FR';
-  const mn=document.querySelector('.menu-name');if(mn)mn.textContent=DB.settings.guestName||t('menuGuest');
+  if(typeof updateMenuIdentity==='function')updateMenuIdentity();
   renderStore();
   if(!window._welcomed){window._welcomed=true;setTimeout(()=>toast(greetMsg()),500);}
 }
@@ -3800,6 +3802,7 @@ function showStore(){
   document.getElementById('storefront').classList.remove('hidden');
   document.getElementById('storeNav').classList.remove('hidden');
   applyDark();applyLang();window.scrollTo(0,0);
+  setTimeout(syncVisitorVerification,1500);
   if(!getVisitor()&&!window._regPrompted){window._regPrompted=true;setTimeout(()=>{if(!getVisitor()&&document.getElementById('storefront')&&!document.getElementById('storefront').classList.contains('hidden'))visitorRegister();},1300);}
 }
 function showAdmin(){
@@ -4039,24 +4042,16 @@ function checkoutWhatsApp(){
 function openCheckout(num){
   _coords=null;_payProof=null;
   const v=getVisitor()||{};
-  const reg=!!(v&&v.name&&v.phone);
   const pays=(DB.settings.payments||[]).filter(Boolean);
   const total=CART.reduce((a,l)=>a+l.price*l.qty,0);
   modal({title:t('checkoutTitle'),size:'lg',body:`
     <div style="background:var(--primary-soft);color:var(--primary-d);border-radius:12px;padding:11px 14px;margin-bottom:14px;display:flex;justify-content:space-between;font-weight:800;font-size:15px">
       <span>${t('total')}</span><span>${money(total)} ${CUR()}</span></div>
-    ${reg?`<div style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:12px;padding:10px 13px;margin-bottom:12px;font-size:13px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-      <span style="color:#15803D;font-weight:800">✓ بياناتك مسجّلة</span>
-      <span>${esc(v.name)} · <span dir="ltr">+${esc(v.cc||'222')} ${esc(v.phone)}</span></span>
-      <button type="button" class="btn btn-xs" style="margin-inline-start:auto" onclick="document.getElementById('coInfo').classList.toggle('hidden')">تغيير</button>
-    </div>`:''}
-    <div id="coInfo" class="${reg?'hidden':''}">
-      <div class="grid2">
-        <div class="field"><label>${t('coName')} *</label><input class="inp" id="co_name" value="${esc(v.name||DB.settings.guestName||'')}"></div>
-        <div class="field"><label>${t('coPhone')} *</label>
-          <div style="display:flex;gap:6px"><select class="inp" id="co_cc" style="max-width:120px">${ccOptions(v.cc||'222')}</select>
-          <input class="inp" id="co_phone" type="tel" inputmode="tel" placeholder="رقم الهاتف" value="${esc(v.phone||'')}" style="flex:1"></div>
-        </div>
+    <div class="grid2">
+      <div class="field"><label>${t('coName')} *</label><input class="inp" id="co_name" value="${esc(v.name||DB.settings.guestName||'')}"></div>
+      <div class="field"><label>${t('coPhone')} *</label>
+        <div style="display:flex;gap:6px"><select class="inp" id="co_cc" style="max-width:120px">${ccOptions(v.cc||'222')}</select>
+        <input class="inp" id="co_phone" type="tel" inputmode="tel" placeholder="رقم الهاتف" value="${esc(v.phone||'')}" style="flex:1"></div>
       </div>
     </div>
     <div class="field"><label>${t('coAddr')}</label><input class="inp" id="co_addr"></div>
@@ -4067,7 +4062,7 @@ function openCheckout(num){
     </div>
     <div class="field"><label>${t('coNote')}</label><textarea class="inp" id="co_note" style="min-height:60px"></textarea></div>
   `,actions:[
-    {label:'متابعة للدفع ›',primary:true,fn:()=>submitCheckout(num,total)},
+    {label:'متابعة ›',primary:true,fn:()=>submitCheckout(num,total)},
     {label:t('close'),fn:()=>true}
   ]});
   setTimeout(getCheckoutLocation,300);
@@ -4109,7 +4104,8 @@ function openPaymentStep(ctx){
   _payProof=null;
   const payNum=DB.settings.payNumber||'20108565';
   const amt=ctx.total;
-  modal({title:'الدفع وإرسال الطلب',size:'lg',body:`
+  const cod=/استلام|عند الطلب|نقد|cash|livraison|réception/i.test(ctx.pay||'');
+  const summary=`
     <div style="border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-bottom:14px">
       <div style="background:var(--primary);color:#fff;padding:9px 14px;font-weight:800;font-size:14px">🧾 ملخّص طلبك (${esc(ctx.name)})</div>
       <div style="padding:8px 14px">
@@ -4120,25 +4116,32 @@ function openPaymentStep(ctx){
           <button class="btn btn-xs" onclick="copyText('${amt}')">نسخ</button></span>
         </div>
       </div>
-    </div>
+    </div>`;
+  const body = cod ? `${summary}
+    <div style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:14px;padding:14px;text-align:center;color:#14532D">
+      <div style="font-size:30px;line-height:1">💵</div>
+      <div style="font-weight:800;font-size:15px;margin-top:6px">الدفع نقداً عند الاستلام</div>
+      <div style="font-size:12.5px;margin-top:5px">ستدفع المبلغ كاملاً عند استلام طلبك. اضغط «إرسال الطلب» لإرساله إلينا عبر واتساب.</div>
+    </div>` : `${summary}
     <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:14px;padding:14px;margin-bottom:14px;text-align:center">
-      <div style="font-size:13px;color:#1E3A8A;margin-bottom:6px">💳 حوّل المبلغ عبر تطبيقات الدفع إلى الرقم الموحّد:</div>
+      <div style="font-size:13px;color:#1E3A8A;font-weight:700;margin-bottom:6px">💳 حوّل المبلغ عبر تطبيقات الدفع إلى الرقم الموحّد:</div>
       <div style="font-size:25px;font-weight:800;letter-spacing:1px;direction:ltr;color:#0f172a">${esc(payNum)}</div>
       <div style="display:flex;gap:8px;justify-content:center;margin-top:10px;flex-wrap:wrap">
         <button class="btn btn-sm btn-primary" onclick="copyText('${esc(payNum)}')">📋 نسخ الرقم</button>
         <button class="btn btn-sm" onclick="copyText('${amt}')">نسخ المبلغ</button>
       </div>
-      <div class="muted" style="font-size:11.5px;margin-top:9px">Bankily · Masrvi · Sedad · Amanty · BimBank · Click</div>
+      <div style="font-size:11.5px;margin-top:9px;color:#475569;font-weight:600">Bankily · Masrvi · Sedad · Amanty · BimBank · Click</div>
     </div>
     <div class="field"><label>إثبات الدفع (صورة التحويل)</label>
-      <div id="co_proofPrev" onclick="document.getElementById('co_proof').click()" style="height:96px;border:1px dashed var(--line);border-radius:12px;display:grid;place-items:center;color:var(--muted);font-size:12.5px;cursor:pointer;background:#f8fafc center/cover no-repeat">${svg(I.upload,18)} <span style="margin-inline-start:6px">إرفاق صورة إثبات الدفع</span></div>
+      <div id="co_proofPrev" onclick="document.getElementById('co_proof').click()" style="height:96px;border:1px dashed var(--line);border-radius:12px;display:grid;place-items:center;color:var(--ink);font-size:12.5px;cursor:pointer;background:var(--surface-2,#f1f5f9) center/cover no-repeat">${svg(I.upload,18)} <span style="margin-inline-start:6px">إرفاق صورة إثبات الدفع</span></div>
       <input type="file" id="co_proof" accept="image/*" class="hidden" onchange="pickPayProof(this)">
     </div>
-    <p class="muted" style="font-size:12px">انسخ الرقم وحوّل المبلغ من تطبيق الدفع، ثم أرفق صورة الإثبات (اختياري) واضغط إرسال الطلب.</p>
-  `,actions:[
-    {label:'إرسال الطلب عبر واتساب',primary:true,icon:I.wa,fn:()=>{sendOrderWa(ctx);return true;}},
-    {label:t('close'),fn:()=>true}
-  ]});
+    <p class="muted" style="font-size:12px">انسخ الرقم وحوّل المبلغ من تطبيق الدفع، ثم أرفق صورة الإثبات (اختياري) واضغط إرسال الطلب.</p>`;
+  modal({title:cod?'تأكيد الطلب':'الدفع وإرسال الطلب',size:'lg',body,
+    actions:[
+      {label:'إرسال الطلب عبر واتساب',primary:true,icon:I.wa,fn:()=>{sendOrderWa(ctx);return true;}},
+      {label:t('close'),fn:()=>true}
+    ]});
 }
 function sendOrderWa(ctx){
   const payNum=DB.settings.payNumber||'20108565';
@@ -4149,7 +4152,8 @@ function sendOrderWa(ctx){
   txt+=`\n*${t('coItems')}:*\n`;
   CART.forEach(l=>{txt+=`• ${l.name} — ${l.qty} × ${money(l.price)} = ${money(l.price*l.qty)} ${CUR()}\n`;});
   txt+=`\n*${t('orderTotal')}: ${money(ctx.total)} ${CUR()}*\n`;
-  txt+=`💳 رقم الدفع الموحّد: ${payNum}\n`;
+  const cod=/استلام|عند الطلب|نقد|cash|livraison|réception/i.test(ctx.pay||'');
+  if(!cod)txt+=`💳 رقم الدفع الموحّد: ${payNum}\n`;
   if(ctx.coords)txt+=`\n*${t('coLocLabel')}:* https://maps.google.com/?q=${ctx.coords.lat},${ctx.coords.lng}\n`;
   if(ctx.note)txt+=`\n*${t('coNote')}:* ${ctx.note}\n`;
   if(_payProof)txt+=`\n${t('coProofNote')}\n`;
@@ -4172,9 +4176,7 @@ function openWhatsApp(){
 
 /* ---- القائمة المنسدلة ---- */
 function openStoreMenu(){
-  const a=document.getElementById('menuAva');if(a)a.style.backgroundImage=`url(${LOGO})`;
-  const mn=document.querySelector('.menu-name');
-  if(mn)mn.textContent=DB.settings.guestName?`${t('hello')} ${DB.settings.guestName}`:t('menuGuest');
+  updateMenuIdentity();
   document.getElementById('storeMenu').classList.add('open');
 }
 function openFavorites(){
@@ -4192,11 +4194,41 @@ function openFavorites(){
 function getVisitor(){try{return JSON.parse(localStorage.getItem('sadaqa_visitor')||'null');}catch(e){return null;}}
 function setVisitor(v){try{localStorage.setItem('sadaqa_visitor',JSON.stringify(v));}catch(e){}}
 function storeWaNumber(){return digitsOnly(DB.settings.whatsapp||'').replace(/^0+/,'')||'22220108565';}
+function menuIdentName(){const v=getVisitor();if(v&&v.name)return v.name;return DB.settings.guestName||t('menuGuest');}
+function updateMenuIdentity(){
+  const v=getVisitor();
+  const mn=document.querySelector('.menu-name');
+  if(mn){
+    let badge='';
+    if(v&&v.name)badge=v.verified?' <span title="حساب موثّق" style="color:#22c55e;font-size:14px">✔</span>':' <span style="color:#f59e0b;font-size:11px;font-weight:600">(غير موثّق)</span>';
+    mn.innerHTML=esc(menuIdentName())+badge;
+  }
+  const a=document.getElementById('menuAva');if(a)a.style.backgroundImage=`url(${(v&&v.image)||LOGO})`;
+}
+function cloudGetReg(id){if(!FS)return Promise.resolve(null);return FS.collection('registrations').doc(String(id)).get().then(d=>d&&d.exists?d.data():null).catch(()=>null);}
+function syncVisitorVerification(){
+  const v=getVisitor();if(!v||!v.id)return;
+  const p=cloudGetReg(v.id);
+  if(p&&p.then)p.then(reg=>{if(reg&&reg.verified&&!v.verified){v.verified=true;setVisitor(v);updateMenuIdentity();if(!window._verifiedToast){window._verifiedToast=true;toast('تم توثيق حسابك ✔','ok');}}}).catch(()=>{});
+}
+let _vrImg=null;
+function pickVrImg(input){const f=input.files[0];if(!f)return;downscaleImage(f,uri=>{if(!uri){toast('تعذّر قراءة الصورة','err');return;}_vrImg=uri;const a=document.getElementById('vrAva');if(a){a.style.backgroundImage=`url(${uri})`;a.innerHTML='';}});input.value='';}
 function visitorRegister(){
   const v=getVisitor()||{};
   const done=!!(v&&v.id);
+  _vrImg=v.image||null;
+  const statusLine=done?(v.verified?'<span style="color:#16a34a;font-weight:700">✔ حساب موثّق</span>':'<span style="color:#B45309;font-weight:700">⏳ بانتظار التوثيق من المتجر</span>'):'';
   modal({title:done?'حسابي في المتجر':'سجّل بياناتك لدى المتجر',size:'sm',body:`
-    <p class="muted" style="font-size:13px;margin-bottom:12px">${done?'بياناتك مسجّلة. يمكنك تعديلها وإعادة التأكيد عبر واتساب.':'رجاءً أدخل اسمك الكامل ورقم هاتفك لنخدمك بشكل أفضل ونؤكّد طلباتك عبر واتساب.'}</p>
+    <div style="display:flex;flex-direction:column;align-items:center;margin-bottom:12px">
+      <div id="vrAva" style="width:84px;height:84px;border-radius:50%;background:#1f2a44 center/cover no-repeat;${_vrImg?`background-image:url(${_vrImg})`:''};display:grid;place-items:center;color:#94a3b8;border:2px solid var(--line)">${_vrImg?'':svg(I.people,30)}</div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button type="button" class="btn btn-xs" onclick="document.getElementById('vrCam').click()">📷 كاميرا</button>
+        <button type="button" class="btn btn-xs" onclick="document.getElementById('vrGal').click()">🖼️ المعرض</button>
+      </div>
+      <input type="file" id="vrCam" accept="image/*" capture="user" class="hidden" onchange="pickVrImg(this)">
+      <input type="file" id="vrGal" accept="image/*" class="hidden" onchange="pickVrImg(this)">
+      ${statusLine?`<div style="margin-top:8px;font-size:12.5px">${statusLine}</div>`:''}
+    </div>
     <div class="field"><label>الاسم الكامل</label><input class="inp" id="vrName" placeholder="مثال: محمد ولد أحمد" value="${esc(v.name||'')}"></div>
     <div class="field" style="margin-top:10px"><label>رقم الهاتف</label>
       <div style="display:flex;gap:8px">
@@ -4204,7 +4236,7 @@ function visitorRegister(){
         <input class="inp" id="vrPhone" inputmode="numeric" placeholder="رقم الهاتف" value="${esc(v.phone||'')}" style="flex:1">
       </div>
     </div>
-    <p class="muted" style="font-size:11.5px;margin-top:10px">${done&&v.verified?'<span style="color:#16a34a">✔ تم تأكيد رقمك.</span>':'سيتم فتح واتساب لإرسال كود التأكيد إلى المتجر — فقط اضغط إرسال.'}</p>`,
+    <p class="muted" style="font-size:11.5px;margin-top:10px">سيُفتح واتساب لإرسال كود التأكيد إلى المتجر — اضغط إرسال فقط. يصبح حسابك «موثّقاً ✔» بعد أن يؤكّده المتجر.</p>`,
     actions:[
       {label:'تسجيل وتأكيد عبر واتساب',primary:true,icon:I.wa,fn:()=>{
         const name=(val('vrName')||'').trim(); const cc=val('vrCc')||'222'; const phone=digitsOnly(val('vrPhone'));
@@ -4212,12 +4244,14 @@ function visitorRegister(){
         if(phone.length<6){toast('أدخل رقم هاتف صحيح','err');return false;}
         const code=String(Math.floor(1000+Math.random()*9000));
         const id=(v&&v.id)||uid('reg');
-        const reg={id,name,cc,phone,code,verified:false,date:new Date().toISOString(),source:'store'};
-        setVisitor({id,name,cc,phone,verified:false});
+        const verified=(v.phone===phone&&v.verified)?true:false;
+        const reg={id,name,cc,phone,code,verified,date:new Date().toISOString(),source:'store',image:_vrImg||''};
+        setVisitor({id,name,cc,phone,verified,image:_vrImg||''});
         cloudAddRegistration(reg).catch(()=>{});
         const msg=`السلام عليكم، أنا ${name}.\nأرغب بالتسجيل في متجر ${DB.settings.name||'مؤسسة الصداقة'}.\nرقمي: +${cc}${phone}\nكود التأكيد: ${code}`;
         waOpen(storeWaNumber(),msg);
         toast('تم إرسال طلب التسجيل، سنؤكّد رقمك قريباً','ok');
+        updateMenuIdentity();
         return true;
       }},
       {label:'لاحقاً',fn:()=>true}
