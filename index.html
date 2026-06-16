@@ -815,6 +815,7 @@ html.dark .pd-thumb{background-color:#1B2742}
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script>
 /* ====================== أيقونات ====================== */
 const I = {
@@ -883,11 +884,12 @@ const FB_CONFIG={
   messagingSenderId:"235682599633",
   appId:"1:235682599633:web:2c605dadb51cdafd84abf0"
 };
-let FS=null, _applyingRemote=false, _metaTs=0, _firstProdSync=true, _firstMetaSync=true;
+let FS=null, AUTH=null, _applyingRemote=false, _metaTs=0, _firstProdSync=true, _firstMetaSync=true;
 try{
   if(window.firebase&&FB_CONFIG.apiKey){
     firebase.initializeApp(FB_CONFIG);
     FS=firebase.firestore();
+    try{AUTH=firebase.auth();}catch(e){console.warn('Auth init',e);}
   }
 }catch(e){console.warn('Firebase init',e);}
 
@@ -4434,7 +4436,7 @@ function delUser(id){
   if(CUR_USER&&u.id===CUR_USER.id){toast('لا يمكن حذف حسابك الحالي','err');return;}
   confirmDlg(`حذف الموظف "${esc(u.name)}"؟`,'سيفقد إمكانية الدخول.',()=>{DB.users=DB.users.filter(x=>x.id!==id);save();toast('تم الحذف','ok');render();});
 }
-function logout(){CUR_USER=null;showStore();toast('تم تسجيل الخروج','ok');}
+function logout(){CUR_USER=null;if(AUTH&&AUTH.currentUser){try{AUTH.signOut();}catch(e){}}showStore();toast('تم تسجيل الخروج','ok');}
 function quickPinLogin(){
   const pin=(val('adm_pin')||'').trim();
   if(!pin){toast('أدخل الرمز','err');return;}
@@ -4444,13 +4446,39 @@ function quickPinLogin(){
   }
   toast('الرمز غير صحيح','err');
 }
+function firebaseLogin(){
+  const email=(val('adm_email')||'').trim();const pass=val('adm_fpass')||'';
+  if(!email||!pass){toast('أدخل البريد وكلمة السر','err');return;}
+  if(!AUTH){toast('المصادقة غير مهيّأة (تحقّق من الإنترنت)','err');return;}
+  toast('جارٍ الدخول الآمن...','ok');
+  AUTH.signInWithEmailAndPassword(email,pass).then(cred=>{
+    const u=DB.users.find(x=>x.email&&x.email.toLowerCase()===email.toLowerCase())||DB.users.find(x=>x.role==='صاحب')||DB.users[0];
+    CUR_USER=u;toast('مرحباً '+(u?u.name:'')+' (دخول آمن ✔)','ok');closeModal();showAdmin();
+  }).catch(err=>{
+    const c=(err&&err.code)||'';
+    let m='تعذّر الدخول';
+    if(c.includes('user-not-found'))m='لا يوجد حساب بهذا البريد — أنشئه في Firebase';
+    else if(c.includes('wrong-password')||c.includes('invalid-credential'))m='كلمة السر غير صحيحة';
+    else if(c.includes('invalid-email'))m='صيغة البريد غير صحيحة';
+    else if(c.includes('network'))m='لا اتصال بالإنترنت';
+    toast(m,'err');
+  });
+}
 function adminLogin(){
   modal({title:'تسجيل الدخول',body:`
-    <div class="quick-login">
-      <label style="font-weight:700;font-size:13.5px">دخول سريع كمدير</label>
+    <div class="quick-login" style="background:var(--primary-soft);border-radius:12px;padding:12px">
+      <label style="font-weight:700;font-size:13.5px">🔒 دخول آمن (بريد وكلمة سر)</label>
+      <div class="field" style="margin-top:8px"><input class="inp" id="adm_email" type="email" placeholder="البريد الإلكتروني" autocapitalize="off" autocomplete="username"></div>
       <div style="display:flex;gap:8px;margin-top:8px">
+        <input class="inp" id="adm_fpass" type="password" placeholder="كلمة السر" autocomplete="current-password" style="flex:1" onkeydown="if(event.key==='Enter')firebaseLogin()">
+        <button class="btn btn-primary" onclick="firebaseLogin()">دخول</button>
+      </div>
+    </div>
+    <div class="login-or"><span>أو دخول سريع كمدير</span></div>
+    <div class="quick-login">
+      <div style="display:flex;gap:8px">
         <input class="inp" id="adm_pin" type="password" inputmode="numeric" placeholder="الرمز السريع" autocomplete="off" style="flex:1" onkeydown="if(event.key==='Enter')quickPinLogin()">
-        <button class="btn btn-primary" onclick="quickPinLogin()">دخول</button>
+        <button class="btn" onclick="quickPinLogin()">دخول</button>
       </div>
     </div>
     <div class="login-or"><span>أو بالاسم وكلمة المرور</span></div>
@@ -4459,14 +4487,14 @@ function adminLogin(){
     actions:[
       {label:'دخول',primary:true,fn:()=>{
         const us=(val('adm_user')||'').trim();const pass=val('adm_pass')||'';
-        if(!us&&!pass){toast('استخدم الرمز السريع أعلاه أو أدخل بياناتك','err');return false;}
+        if(!us&&!pass){toast('استخدم الدخول الآمن أو الرمز السريع أعلاه','err');return false;}
         const u=DB.users.find(x=>x.username===us&&x.pass===pass);
         if(u){CUR_USER=u;toast('مرحباً '+u.name,'ok');showAdmin();return true;}
         toast('بيانات الدخول غير صحيحة','err');return false;
       }},
       {label:'إلغاء',fn:()=>true}
     ]});
-  setTimeout(()=>{const b=document.querySelectorAll('#modalActions .btn')[0];if(b)b.id='admGoBtn';const pin=document.getElementById('adm_pin');if(pin)pin.focus();},30);
+  setTimeout(()=>{const b=document.querySelectorAll('#modalActions .btn')[0];if(b)b.id='admGoBtn';const em=document.getElementById('adm_email');if(em)em.focus();},30);
 }
 
 /* ====================== تشغيل ====================== */
