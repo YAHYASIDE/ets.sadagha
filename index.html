@@ -729,6 +729,10 @@ html.dark .pd-thumb{background-color:#1B2742}
         <span class="mlabel">سجّل بياناتك / حسابي</span>
         <span class="micon" style="background:#E5EDFF;color:#1D4ED8"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><circle cx="12" cy="8" r="3.4"/><path d="M5 20a7 7 0 0 1 14 0"/></svg></span>
       </button>
+      <button class="menu-item" onclick="closeStoreMenu();enableNotifications()">
+        <span class="mlabel">تفعيل الإشعارات</span>
+        <span class="micon" style="background:#FEF3C7;color:#B45309"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg></span>
+      </button>
       <button class="menu-item" onclick="closeStoreMenu();openCart()">
         <span class="mlabel" data-i18n="mOrders">طلباتي</span>
         <span class="micon" style="background:#FEF3E2;color:#C2710C">${''}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><circle cx="9" cy="20" r="1.6"/><circle cx="17" cy="20" r="1.6"/><path d="M2 3h3l2.5 12.5a1.6 1.6 0 0 0 1.6 1.3h8.3a1.6 1.6 0 0 0 1.6-1.2L22 7H6"/></svg></span>
@@ -816,6 +820,7 @@ html.dark .pd-thumb{background-color:#1B2742}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js"></script>
 <script>
 /* ====================== أيقونات ====================== */
 const I = {
@@ -893,6 +898,30 @@ try{
   }
 }catch(e){console.warn('Firebase init',e);}
 
+/* ====================== إشعارات Push (FCM) ====================== */
+// ← الصق مفتاح Web Push (يبدأ بحرف B) بين علامتي التنصيص:
+const VAPID_KEY="BMuBypEvlKBZ3O8EorhplgtL9z0qqWB0P9DMBg82ZC2gZztaRrUomZhZD4Z1HTUCamOo-fe8buCfzO71aIV2CR4";
+let MSG=null;
+try{ if(window.firebase&&firebase.messaging&&firebase.messaging.isSupported&&firebase.messaging.isSupported()){ MSG=firebase.messaging(); } }catch(e){console.warn('messaging',e);}
+function notifSupported(){return !!(MSG&&('serviceWorker' in navigator)&&('Notification' in window));}
+function enableNotifications(){
+  if(!notifSupported()){toast('متصفّحك لا يدعم الإشعارات. على آيفون أضف الموقع إلى الشاشة الرئيسية أولاً.','err');return;}
+  if(!VAPID_KEY){toast('لم تُضبط الإشعارات بعد (مفتاح Web Push)','err');return;}
+  if(Notification.permission==='denied'){toast('الإشعارات محظورة من إعدادات المتصفّح — فعّلها يدوياً','err');return;}
+  Notification.requestPermission().then(perm=>{
+    if(perm!=='granted'){toast('لم تُمنح صلاحية الإشعارات','err');return;}
+    navigator.serviceWorker.register('firebase-messaging-sw.js').then(reg=>{
+      MSG.getToken({vapidKey:VAPID_KEY,serviceWorkerRegistration:reg}).then(token=>{
+        if(!token){toast('تعذّر إنشاء رمز الإشعار','err');return;}
+        if(FS){const v=getVisitor()||{};FS.collection('pushtokens').doc(token).set({token,name:(v&&v.name)||'',phone:(v&&v.phone)||'',date:new Date().toISOString()}).catch(()=>{});}
+        try{localStorage.setItem('sadaqa_push','1');}catch(e){}
+        toast('تم تفعيل الإشعارات ✔','ok');
+      }).catch(e=>{toast('تعذّر التفعيل','err');console.warn(e);});
+    }).catch(()=>toast('تعذّر تسجيل خدمة الإشعارات','err'));
+  });
+}
+try{ if(MSG)MSG.onMessage(p=>{const n=(p&&p.notification)||{};toast('📢 '+(n.title||'إشعار')+(n.body?(' — '+n.body):''));}); }catch(e){}
+
 function setSync(state){
   const el=document.getElementById('syncDot'); if(!el)return;
   if(state==='ok'){el.textContent='● متزامن';el.style.color='#16a34a';}
@@ -933,6 +962,11 @@ function cloudDelReg(id){ if(!FS)return Promise.resolve(); return FS.collection(
 function cloudAddAnnouncement(a){ if(!FS)return Promise.reject('no-cloud'); return FS.collection('announcements').doc(String(a.id)).set(a); }
 function cloudFetchAnnouncements(){ if(!FS)return Promise.resolve(null); return FS.collection('announcements').get().then(s=>s.docs.map(d=>d.data())); }
 function cloudDelAnnouncement(id){ if(!FS)return Promise.resolve(); return FS.collection('announcements').doc(String(id)).delete(); }
+/* ربط حسابات الموظّفين بأدوارهم (يُقرأ عند الدخول الآمن) */
+function staffKey(email){return String(email||'').trim().toLowerCase();}
+function cloudPutStaff(s){ if(!FS||!s.email)return Promise.resolve(); return FS.collection('staff').doc(staffKey(s.email)).set({email:staffKey(s.email),role:s.role||'مسيّر',name:s.name||''}); }
+function cloudGetStaff(email){ if(!FS)return Promise.resolve(null); return FS.collection('staff').doc(staffKey(email)).get().then(d=>d&&d.exists?d.data():null).catch(()=>null); }
+function cloudDelStaff(email){ if(!FS||!email)return Promise.resolve(); return FS.collection('staff').doc(staffKey(email)).delete().catch(()=>{}); }
 function refreshViews(){
   try{
     const sf=document.getElementById('storefront');
@@ -4395,11 +4429,11 @@ function vUsers(v){
   v.innerHTML=`<div class="panel"><div class="panel-h">${svg(I.people,18)}<h3>المستخدمون (${DB.users.length})</h3>
     <button class="btn btn-primary btn-sm" style="margin-inline-start:auto" onclick="editUser()">${svg(I.plus,15)} مستخدم جديد</button></div>
     <div class="tbl-wrap"><table style="border-top:1px solid var(--line)">
-      <thead><tr><th>الاسم</th><th>اسم الدخول</th><th>كلمة المرور</th><th>الدور</th><th></th></tr></thead>
+      <thead><tr><th>الاسم</th><th>اسم الدخول</th><th>البريد (آمن)</th><th>الدور</th><th></th></tr></thead>
       <tbody>${DB.users.map(u=>`<tr>
         <td><div style="display:flex;align-items:center;gap:8px"><span style="width:30px;height:30px;border-radius:50%;flex:0 0 auto;display:grid;place-items:center;background:${roleColor(u.role)}22;color:${roleColor(u.role)}">${svg(I.people,15)}</span><b>${esc(u.name)}</b></div></td>
         <td class="code-tag">${esc(u.username)}</td>
-        <td><span class="pass-cell" data-p="${esc(u.pass)}">••••••</span> <button class="btn btn-icon btn-ghost btn-sm" title="إظهار" onclick="togglePass(this)">${svg(I.search,14)}</button></td>
+        <td class="muted" style="font-size:12px" dir="ltr">${esc(u.email||'—')}</td>
         <td><span style="color:${roleColor(u.role)};font-weight:700">${u.role}</span></td>
         <td style="text-align:end;white-space:nowrap">
           <button class="btn btn-sm btn-icon" title="تعديل البيانات وكلمة المرور" onclick="editUser('${u.id}')">${svg(I.edit,15)}</button>
@@ -4415,18 +4449,21 @@ function vUsers(v){
 }
 function togglePass(btn){const s=btn.parentElement.querySelector('.pass-cell');if(!s)return;const showing=s.dataset.show==='1';s.textContent=showing?'••••••':s.dataset.p;s.dataset.show=showing?'':'1';}
 function editUser(id){
-  const u=id?DB.users.find(x=>x.id===id):{name:'',username:'',pass:'',role:'مسيّر'};
+  const u=id?DB.users.find(x=>x.id===id):{name:'',username:'',pass:'',role:'مسيّر',email:''};
   modal({title:id?'تعديل مستخدم':'مستخدم جديد',body:`
     <div class="field"><label>الاسم</label><input class="inp" id="u_name" value="${esc(u.name)}"></div>
-    <div class="field" style="margin-top:10px"><label>اسم الدخول</label><input class="inp" id="u_user" value="${esc(u.username)}" placeholder="بالأحرف اللاتينية مثل staff7" autocapitalize="off"></div>
-    <div class="field" style="margin-top:10px"><label>كلمة المرور</label><input class="inp" id="u_pass" value="${esc(u.pass)}"></div>
-    <div class="field" style="margin-top:10px"><label>الدور</label><select class="inp" id="u_role">${ROLE_LIST.map(r=>`<option ${u.role===r?'selected':''}>${r}</option>`).join('')}</select></div>`,
+    <div class="field" style="margin-top:10px"><label>اسم الدخول (محلي)</label><input class="inp" id="u_user" value="${esc(u.username)}" placeholder="بالأحرف اللاتينية مثل staff7" autocapitalize="off"></div>
+    <div class="field" style="margin-top:10px"><label>كلمة المرور (محلية)</label><input class="inp" id="u_pass" value="${esc(u.pass)}"></div>
+    <div class="field" style="margin-top:10px"><label>البريد الإلكتروني (للدخول الآمن)</label><input class="inp" id="u_email" type="email" value="${esc(u.email||'')}" placeholder="بريد حساب Firebase للموظّف" autocapitalize="off"></div>
+    <div class="field" style="margin-top:10px"><label>الدور</label><select class="inp" id="u_role">${ROLE_LIST.map(r=>`<option ${u.role===r?'selected':''}>${r}</option>`).join('')}</select></div>
+    <p class="muted" style="font-size:11.5px;margin-top:10px">للدخول الآمن: أنشئ حساباً للموظّف في Firebase (Authentication ← Add user) بنفس هذا البريد، واختر دوره هنا.</p>`,
     actions:[{label:'حفظ',primary:true,fn:()=>{
-      const name=val('u_name').trim(),us=val('u_user').trim(),pass=val('u_pass').trim(),role=val('u_role');
-      if(!name||!us||!pass){toast('أكمل كل البيانات','err');return false;}
+      const name=val('u_name').trim(),us=val('u_user').trim(),pass=val('u_pass').trim(),role=val('u_role'),email=(val('u_email')||'').trim().toLowerCase();
+      if(!name||!us||!pass){toast('أكمل الاسم واسم الدخول وكلمة المرور','err');return false;}
       if(DB.users.some(x=>x.username===us&&x.id!==(id||'')) ){toast('اسم الدخول مستخدم','err');return false;}
-      if(id)Object.assign(u,{name,username:us,pass,role});
-      else DB.users.push({id:uid('u'),name,username:us,pass,role});
+      if(id)Object.assign(u,{name,username:us,pass,role,email});
+      else{u.id=uid('u');Object.assign(u,{name,username:us,pass,role,email});DB.users.push(u);}
+      if(email)cloudPutStaff({email,role,name}).catch(()=>{});
       save();toast('تم الحفظ','ok');render();return true;
     }},{label:'إلغاء',fn:()=>true}]});
 }
@@ -4434,7 +4471,7 @@ function delUser(id){
   const u=DB.users.find(x=>x.id===id);if(!u)return;
   if(u.role==='صاحب'){toast('لا يمكن حذف الصاحب','err');return;}
   if(CUR_USER&&u.id===CUR_USER.id){toast('لا يمكن حذف حسابك الحالي','err');return;}
-  confirmDlg(`حذف الموظف "${esc(u.name)}"؟`,'سيفقد إمكانية الدخول.',()=>{DB.users=DB.users.filter(x=>x.id!==id);save();toast('تم الحذف','ok');render();});
+  confirmDlg(`حذف الموظف "${esc(u.name)}"؟`,'سيفقد إمكانية الدخول.',()=>{if(u.email)cloudDelStaff(u.email);DB.users=DB.users.filter(x=>x.id!==id);save();toast('تم الحذف','ok');render();});
 }
 function logout(){CUR_USER=null;if(AUTH&&AUTH.currentUser){try{AUTH.signOut();}catch(e){}}showStore();toast('تم تسجيل الخروج','ok');}
 function quickPinLogin(){
@@ -4452,8 +4489,15 @@ function firebaseLogin(){
   if(!AUTH){toast('المصادقة غير مهيّأة (تحقّق من الإنترنت)','err');return;}
   toast('جارٍ الدخول الآمن...','ok');
   AUTH.signInWithEmailAndPassword(email,pass).then(cred=>{
-    const u=DB.users.find(x=>x.email&&x.email.toLowerCase()===email.toLowerCase())||DB.users.find(x=>x.role==='صاحب')||DB.users[0];
-    CUR_USER=u;toast('مرحباً '+(u?u.name:'')+' (دخول آمن ✔)','ok');closeModal();showAdmin();
+    const finish=u=>{CUR_USER=u;toast('مرحباً '+(u?u.name:'')+' (دخول آمن ✔)','ok');closeModal();showAdmin();};
+    const local=DB.users.find(x=>x.email&&x.email.toLowerCase()===email.toLowerCase());
+    if(local){finish(local);return;}
+    const p=cloudGetStaff(email);
+    if(p&&p.then){p.then(s=>{
+      if(s&&s.role){finish({id:'fb_'+staffKey(email),name:s.name||email,username:email,email:staffKey(email),role:s.role});}
+      else{const own=DB.users.find(x=>x.role==='صاحب')||DB.users[0];finish(own);}
+    }).catch(()=>{const own=DB.users.find(x=>x.role==='صاحب')||DB.users[0];finish(own);});}
+    else{const own=DB.users.find(x=>x.role==='صاحب')||DB.users[0];finish(own);}
   }).catch(err=>{
     const c=(err&&err.code)||'';
     let m='تعذّر الدخول';
