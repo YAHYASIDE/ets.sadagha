@@ -291,7 +291,7 @@ html.dark .inv-sums>div{background:#0E1626}
 .inv-act .btn{flex:1;min-width:calc(50% - 4px);justify-content:center;padding:11px}
 .inv-side-body{display:flex;flex-direction:column;gap:8px;padding:10px 12px}
 .sale-search-wrap{position:relative}
-.sale-results{display:none;flex-direction:column;gap:3px;position:absolute;inset-inline:0;top:calc(100% + 4px);z-index:30;background:var(--surface);border:1px solid var(--primary);border-radius:10px;box-shadow:0 10px 28px rgba(0,0,0,.16);max-height:300px;overflow:auto;padding:5px}
+.sale-results{display:none;flex-direction:column;gap:3px;position:absolute;inset-inline:0;top:calc(100% + 4px);z-index:30;background:var(--surface);border:1px solid var(--primary);border-radius:10px;box-shadow:0 10px 28px rgba(0,0,0,.16);max-height:min(66vh,540px);overflow:auto;padding:5px}
 .sale-results.open{display:flex}
 .sale-res.sel{border-color:var(--primary);background:#1D4ED812}
 .sale-res{display:flex;justify-content:space-between;align-items:center;gap:8px;border:1px solid var(--line);border-radius:9px;padding:7px 10px;cursor:pointer;font-size:13px}
@@ -1104,6 +1104,7 @@ if(!DB.catUnits)DB.catUnits={};
 if(!DB.warehouses||!DB.warehouses.length)DB.warehouses=[{id:'wh_main',name:'الحانوت'}];
 DB.products.forEach(p=>{if(!p.stock||typeof p.stock!=='object')p.stock={[DB.warehouses[0].id]:Number(p.qty)||0};});
 if(!DB.boxes||!DB.boxes.length)DB.boxes=[{id:'box1',name:'الصندوق رقم ١',start:Number(DB.settings.cashStart)||0},{id:'box2',name:'الصندوق رقم ٢',start:0}];
+if(!DB._seedApps){DB._seedApps=1;['Bankily','Masrvi','Sedad','Amanty','Click','Orange Money'].forEach(nm=>{const ex=(DB.boxes||[]).some(b=>(b.name||'').toLowerCase()===nm.toLowerCase());if(!ex)DB.boxes.push({id:'boxapp_'+nm.toLowerCase().replace(/[^a-z0-9]/g,''),name:nm,type:'app',start:0});});}
 if(!DB.services)DB.services=[{id:'svc_ship',name:'شحن',price:0},{id:'svc_run',name:'تشغيل',price:0},{id:'svc_load',name:'حمل',price:0}];
 if(!DB.custPays)DB.custPays=[];
 if(!DB.vouchers)DB.vouchers=[];
@@ -1975,7 +1976,7 @@ function renderSaleSearch(){
   let list=DB.products;
   if(q)list=list.filter(p=>p.name.toLowerCase().includes(q)||(p.code||'').toLowerCase().includes(q));
   list=list.slice(0,80);
-  box.innerHTML=list.length?list.map(p=>{const av=stockOf(p,saleWh);return `<div class="sale-res ${av<=0?'dim':''} ${_pickedId===p.id?'sel':''}" onclick="invPick('${p.id}')">
+  box.innerHTML=list.length?list.map(p=>{const av=stockOf(p,saleWh);return `<div class="sale-res ${av<=0?'dim':''} ${_pickedId===p.id?'sel':''}" onpointerdown="event.preventDefault();invPick('${p.id}')">
     <div><b>${esc(p.name)}</b><span>${esc(p.code||'')} · متوفر: ${money(av)}</span></div><div class="t-num">${money(p.price)}</div></div>`;}).join('')
     :`<div class="sale-res dim"><div>لا نتائج</div></div>`;
 }
@@ -2014,10 +2015,10 @@ function invAddLine(){
   const p=DB.products.find(x=>x.id===_pickedId);if(!p)return;
   const qty=parseFloat(val('e_qty'))||0;const price=parseFloat(val('e_price'))||0;const disc=parseFloat(val('e_disc'))||0;const note=(val('e_note')||'').trim();
   if(qty<=0){toast('أدخل كمية صحيحة','err');return;}
-  const av=stockOf(p,saleWh);const exist=cart.find(l=>l.id===p.id&&(l.wh||saleWh)===saleWh&&!l.service);const already=exist?exist.qty:0;
+  const av=stockOf(p,saleWh);
+  const already=cart.filter(l=>l.id===p.id&&(l.wh||saleWh)===saleWh&&!l.service).reduce((a,l)=>a+(Number(l.qty)||0),0);
   if(already+qty>av){toast('الكمية تتجاوز المتوفر في '+whName(saleWh)+' ('+money(av)+')','err');return;}
-  if(exist){exist.qty+=qty;exist.price=price;exist.disc=disc;if(note)exist.note=note;}
-  else cart.push({id:p.id,name:p.name,code:p.code||'',unit:p.unit||'قطعة',price,cost:p.wholesale||0,qty,disc,note,wh:saleWh,max:av});
+  cart.push({id:p.id,name:p.name,code:p.code||'',unit:p.unit||'قطعة',price,cost:p.wholesale||0,qty,disc,note,wh:saleWh,max:av});
   _pickedId='';toast('أُضيف: '+p.name,'ok');invRefresh();
 }
 function invLineSet(i,field,value){
@@ -2065,7 +2066,7 @@ function renderInvTotals(){
        <button class="btn btn-xs" onclick="addQuickPay()">${svg(I.plus,13)} دفعة</button>
        <span class="pay-state">مدفوع <b class="t-num">${money(invPaid())}</b> · متبقّي <b class="t-num ${rem>0?'t-red':'t-green'}">${money(rem)}</b></span>`;
   const chips=(invType==='credit'&&invPayments.length)
-    ? `<div class="pay-chips">${invPayments.map((p,i)=>`<span class="pay-chip" onclick="editPayment(${i})">${money(p.amount)}${p.note?(' · '+esc(p.note)):''}<b onclick="event.stopPropagation();delPayment(${i})">✕</b></span>`).join('')}</div>`
+    ? `<div class="pay-chips">${invPayments.map((p,i)=>`<span class="pay-chip" onclick="editPayment(${i})">${money(p.amount)}${p.boxName?(' · '+esc(p.boxName)):(p.note?(' · '+esc(p.note)):'')}<b onclick="event.stopPropagation();delPayment(${i})">✕</b></span>`).join('')}</div>`
     : '';
   box.innerHTML=`
    <div class="inv-sums">
@@ -2087,14 +2088,16 @@ function renderInvTotals(){
    ${chips}`;
   updateBalRow();
 }
-function addQuickPay(){const a=parseFloat(val('payQuick'))||0;if(a<=0){toast('أدخل مبلغ الدفعة','err');return;}invPayments.push({amount:a,date:todayISO(),note:''});renderInvTotals();}
+function addQuickPay(){const a=parseFloat(val('payQuick'))||0;if(a<=0){toast('أدخل مبلغ الدفعة','err');return;}invPayments.push({amount:a,date:todayISO(),note:'',box:saleBox,boxName:boxName(saleBox)});renderInvTotals();}
 function editPayment(i){const p=invPayments[i];if(!p)return;
   modal({title:'تعديل دفعة',body:`<div class="field"><label>المبلغ *</label><input class="inp" id="pm_amt" type="number" step="any" value="${p.amount}"></div>
+    <div class="field" style="margin-top:10px"><label>الوجهة (الصندوق / تطبيق بنكي)</label>
+      <select class="inp" id="pm_box">${boxes().map(bx=>`<option value="${bx.id}" ${(p.box||saleBox)===bx.id?'selected':''}>${esc(bx.name)}${bx.type==='app'?' (تطبيق)':bx.type==='bank'?' (بنك)':''}</option>`).join('')}</select></div>
     <div class="field" style="margin-top:10px"><label>التاريخ</label><input class="inp" id="pm_date" type="date" value="${p.date||todayISO()}"></div>
     <div class="field" style="margin-top:10px"><label>ملاحظة</label><input class="inp" id="pm_note" value="${esc(p.note||'')}"></div>`,
-    actions:[{label:'حفظ',primary:true,fn:()=>{const a=parseFloat(val('pm_amt'))||0;if(a<=0){toast('أدخل مبلغاً','err');return false;}p.amount=a;p.date=val('pm_date')||todayISO();p.note=(val('pm_note')||'').trim();renderInvTotals();return true;}},{label:'إلغاء',fn:()=>true}]});
+    actions:[{label:'حفظ',primary:true,fn:()=>{const a=parseFloat(val('pm_amt'))||0;if(a<=0){toast('أدخل مبلغاً','err');return false;}p.amount=a;p.box=val('pm_box')||saleBox;p.boxName=boxName(p.box);p.date=val('pm_date')||todayISO();p.note=(val('pm_note')||'').trim();renderInvTotals();return true;}},{label:'إلغاء',fn:()=>true}]});
 }
-function addPayment(){const a=0;invPayments.push({amount:a,date:todayISO(),note:''});editPayment(invPayments.length-1);}
+function addPayment(){invPayments.push({amount:0,date:todayISO(),note:'',box:saleBox,boxName:boxName(saleBox)});editPayment(invPayments.length-1);}
 function delPayment(i){invPayments.splice(i,1);renderInvTotals();}
 function renderInvPay(){updateBalRow();}
 function invMinimize(){if(!cart.length){toast('الفاتورة فارغة','err');return;}invMin=true;toast('صُغّرت الفاتورة','ok');render();}
@@ -2183,7 +2186,8 @@ function invSave(){
   if(editing){sale.editedBy=(typeof CUR_USER!=='undefined'&&CUR_USER&&CUR_USER.name)?CUR_USER.name:'مستخدم';sale.editedAt=new Date().toISOString();const ix=DB.sales.findIndex(s=>s.id===editing.id);DB.sales[ix]=sale;}
   else DB.sales.push(sale);
   if(cust)cust.balance=balBefore+(net-paid);
-  if(paid>0)addCash('in',paid,(editing?'تعديل فاتورة #':(invType==='cash'?'بيع نقدي #':'دفعة فاتورة آجلة #'))+no,sale.id,saleBox);
+  if(invType==='credit'){payments.forEach(p=>{const pa=Number(p.amount)||0;if(pa>0)addCash('in',pa,(editing?'تعديل دفعة فاتورة #':'دفعة فاتورة آجلة #')+no,sale.id,p.box||saleBox);});}
+  else if(paid>0)addCash('in',paid,(editing?'تعديل فاتورة #':'بيع نقدي #')+no,sale.id,saleBox);
   save();_aff.forEach(p=>cloudPutProduct(p));
   editSaleId='';cart=[];saleCustomer='';_pickedId='';invPayments=[];invMin=false;
   toast(editing?('تم تعديل الفاتورة #'+no):('تم حفظ الفاتورة #'+no),'ok');
@@ -2203,19 +2207,19 @@ function editSale(id){
 }
 function invoiceBodyHTML(sale){
   const isCredit=sale.type==='credit';
-  const cell='padding:7px 6px;text-align:center;border:1px solid #CBD5E1';
+  const cell='padding:7px 6px;text-align:center;border:1px solid #B6C2D2;color:#000';
   const rows=sale.items.map((i,n)=>`<tr style="background:${n%2?'#F8FAFC':'#ffffff'}">
-      <td style="${cell};color:#64748b">${n+1}</td>
-      <td style="${cell};text-align:right">${esc(i.name)}${i.note?`<div style="font-size:10.5px;color:#94A3B8">${esc(i.note)}</div>`:''}</td>
-      <td style="${cell};color:#475569">${esc(i.code||'—')}</td>
-      <td style="${cell};font-weight:600">${money(i.qty)}</td>
+      <td style="${cell};color:#334155">${n+1}</td>
+      <td style="${cell};text-align:right;font-weight:600">${esc(i.name)}${i.note?`<div style="font-size:10.5px;color:#475569">${esc(i.note)}</div>`:''}</td>
+      <td style="${cell}">${esc(i.code||'—')}</td>
+      <td style="${cell};font-weight:700;font-size:13.5px;white-space:nowrap">${money(i.qty)}</td>
       <td style="${cell}">${esc(i.unit||'—')}</td>
-      <td style="${cell};color:#475569">${esc(i.warehouseName||'—')}</td>
-      <td style="${cell}">${money(i.price)}</td>
-      <td style="${cell};font-weight:700">${money(i.total!=null?i.total:i.price*i.qty)}</td></tr>`).join('');
+      <td style="${cell}">${esc(i.warehouseName||'—')}</td>
+      <td style="${cell};font-size:14px;font-weight:600;white-space:nowrap">${money(i.price)}</td>
+      <td style="${cell};font-weight:800;font-size:14.5px;white-space:nowrap">${money(i.total!=null?i.total:i.price*i.qty)}</td></tr>`).join('');
   const totQty=sale.items.filter(i=>!i.service).reduce((a,i)=>a+(Number(i.qty)||0),0);
   const totalRow=(lbl,val,opt={})=>`<div style="display:flex;justify-content:space-between;gap:24px;padding:5px 0;${opt.border?'border-top:1px solid #E2E8F0;':''}font-size:${opt.big?'16px':'13px'};${opt.big?'font-weight:800;':''}color:${opt.color||'#0f172a'}"><span style="color:${opt.lblColor||'#64748b'}">${lbl}</span><b style="font-variant-numeric:tabular-nums">${val}</b></div>`;
-  const qrText='مؤسسة الصداقة للتجارة العامة\nفاتورة رقم: '+sale.no+'\nالنوع: '+(isCredit?'بيع آجل':'بيع نقدي')+'\nالتاريخ: '+fmtDateTime(sale.date)+'\nالزبون: '+(sale.customerName||'')+'\nالإجمالي: '+m(sale.total)+' '+CUR()+'\nالمدفوع: '+m(sale.paid)+' '+CUR()+'\nالمتبقّي: '+m(sale.remaining)+' '+CUR();
+  const qrText='مؤسسة الصداقة للتجارة العامة\nفاتورة رقم: '+sale.no+'\nالنوع: '+(isCredit?'بيع آجل':'بيع نقدي')+'\nالتاريخ: '+fmtDateTime(sale.date)+'\nالزبون: '+(sale.customerName||'')+'\nالإجمالي: '+m(sale.total)+'\nالمدفوع: '+m(sale.paid)+'\nالمتبقّي: '+m(sale.remaining);
   const qr=(typeof qrDataUrl==='function')?qrDataUrl(qrText):'';
   return `
     <div id="invPrint" style="background:#ffffff;color:#0f172a;font-family:Tajawal,Arial,sans-serif;padding:0">
@@ -2263,19 +2267,19 @@ function invoiceBodyHTML(sale){
         <div style="flex:0 0 260px;min-width:240px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;padding:12px 16px">
           ${sale.discount>0?totalRow('إجمالي قبل الحسم',m(sale.subtotal))+totalRow('الحسم',m(sale.discount),{color:'#DC2626'}):''}
           <div style="display:flex;justify-content:space-between;gap:24px;align-items:center;background:#1D4ED8;color:#fff;border-radius:8px;padding:8px 12px;margin:6px 0">
-            <span style="font-size:13px">الإجمالي</span><b style="font-size:17px;font-variant-numeric:tabular-nums">${m(sale.total)} ${CUR()}</b>
+            <span style="font-size:13px">الإجمالي</span><b style="font-size:18px;font-variant-numeric:tabular-nums">${m(sale.total)}</b>
           </div>
-          ${totalRow('المدفوع',m(sale.paid),{color:'#15803D'})}
-          ${sale.remaining>0?totalRow('المتبقّي',m(sale.remaining),{color:'#DC2626',border:true})+(sale.balanceAfter!=null?totalRow('رصيد الزبون بعد',m(sale.balanceAfter)):''):totalRow('الحالة','مدفوعة بالكامل',{color:'#15803D',border:true})}
+          ${totalRow('المدفوع',m(sale.paid),{color:'#000',lblColor:'#000',big:true})}
+          ${sale.remaining>0?totalRow('المتبقّي',m(sale.remaining),{color:'#DC2626',border:true})+(sale.balanceAfter!=null?totalRow('رصيد الزبون بعد',m(sale.balanceAfter)):''):totalRow('الحالة','مدفوعة بالكامل',{color:'#000',lblColor:'#000',border:true})}
         </div>
       </div>
 
       <div style="margin-top:14px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:9px 14px;text-align:center;font-size:13px;color:#1E3A8A">
         💳 للدفع عبر تطبيقات الدفع (Bankily · Masrvi · Sedad · Amanty · BimBank · Click...): <b style="font-size:15px;font-variant-numeric:tabular-nums">${esc(DB.settings.payNumber||'20108565')}</b>
       </div>
-      <div style="margin-top:14px;border-top:1px dashed #CBD5E1;padding-top:12px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;font-size:11.5px;color:#64748b">
-        <div style="max-width:60%">شكراً لتعاملكم معنا 🌿</div>
-        <div style="text-align:center">التوقيع والختم<br><br><span style="display:inline-block;border-top:1px solid #94A3B8;width:120px"></span></div>
+      <div style="margin-top:14px;border-top:1px dashed #CBD5E1;padding-top:12px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;font-size:12px;color:#000">
+        <div style="max-width:60%;font-weight:600">شكراً لتعاملكم معنا 🌿</div>
+        <div style="text-align:center;font-weight:600">التوقيع والختم<br><br><span style="display:inline-block;border-top:1px solid #475569;width:120px"></span></div>
       </div>
     </div>`;
 }
@@ -2483,7 +2487,7 @@ function renderPurSearch(){
   const box=document.getElementById('purResults');if(!box)return;
   const q=(val('purSearch')||'').trim().toLowerCase();
   const list=DB.products.filter(p=>!q||p.name.toLowerCase().includes(q)||(p.code||'').toLowerCase().includes(q)).slice(0,80);
-  box.innerHTML=list.length?list.map(p=>`<button class="sale-res ${_pPicked===p.id?'sel':''}" onmousedown="event.preventDefault()" onclick="purPick('${p.id}')">
+  box.innerHTML=list.length?list.map(p=>`<button class="sale-res ${_pPicked===p.id?'sel':''}" onpointerdown="event.preventDefault();purPick('${p.id}')">
     <div style="flex:1;text-align:start"><b style="font-size:13px">${esc(p.name)}</b><div class="muted" style="font-size:11px">${esc(p.code||'')} · مخزون: ${money(p.qty||0)} · جملة ${money(p.wholesale||0)}</div></div>
     ${svg(I.plus,15)}</button>`).join(''):`<div class="muted" style="padding:10px;font-size:12.5px">لا نتائج — أنشئ «مادة» جديدة</div>`;
 }
@@ -3489,9 +3493,9 @@ function vSettings(v){
     <button class="btn btn-primary" style="margin-top:14px" onclick="saveSettings()">${svg(I.check,16)} حفظ الإعدادات</button></div>
   </div>
 
-  <div class="panel" style="margin-bottom:16px"><div class="panel-h">${svg(I.wallet,18)}<h3>الصناديق</h3><div class="spacer"></div><button class="btn btn-sm btn-primary" onclick="boxAdd()">${svg(I.plus,14)} صندوق</button></div>
+  <div class="panel" style="margin-bottom:16px"><div class="panel-h">${svg(I.wallet,18)}<h3>الصناديق وتطبيقات البنكية</h3><div class="spacer"></div><button class="btn btn-sm btn-primary" onclick="boxAdd()">${svg(I.plus,14)} إضافة</button></div>
     <div style="padding:14px 16px"><div class="set-list">
-      ${boxes().map(bx=>`<div class="set-row"><div><b>${esc(bx.name)}</b><span>رصيد افتتاحي: ${money(bx.start||0)} · الحالي: ${money(boxBalance(bx.id))} ${CUR()}</span></div>
+      ${boxes().map(bx=>`<div class="set-row"><div><b>${esc(bx.name)}${bx.type==='app'?' <span style="color:var(--muted);font-weight:600;font-size:11px">(تطبيق بنكي)</span>':bx.type==='bank'?' <span style="color:var(--muted);font-weight:600;font-size:11px">(حساب بنكي)</span>':''}</b><span>رصيد افتتاحي: ${money(bx.start||0)} · الحالي: ${money(boxBalance(bx.id))} ${CUR()}</span></div>
         <div style="display:flex;gap:4px">
           <button class="btn btn-icon btn-ghost btn-sm" onclick="boxEdit('${bx.id}')">${svg(I.edit,15)}</button>
           ${boxes().length>1?`<button class="btn btn-icon btn-ghost btn-sm" onclick="boxDel('${bx.id}')">${svg(I.trash,15)}</button>`:''}
