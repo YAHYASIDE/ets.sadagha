@@ -4517,6 +4517,8 @@ function openAccountSheet(){
         ?`<button class="btn" style="justify-content:center;color:var(--danger)" onclick="closeModal();customerLogout()">تسجيل الخروج</button>`
         :`<button class="btn" style="justify-content:center" onclick="closeModal();customerLogin()">تسجيل الدخول بحساب موجود</button>`}
       <button class="btn btn-ghost" style="justify-content:center" onclick="closeModal();openStoreMenu()">المزيد من الخيارات</button>
+      <div style="border-top:1px solid var(--line);margin:4px 0 2px"></div>
+      <button class="btn" style="justify-content:center" onclick="closeModal();adminLogin()">${svg(I.lock||I.user||I.people,15)} دخول كمدير / موظّف</button>
     </div>`,
     actions:[{label:t('close'),fn:()=>true}]});
 }
