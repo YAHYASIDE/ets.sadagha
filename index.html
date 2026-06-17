@@ -709,7 +709,7 @@ html.dark .pd-thumb{background-color:#1B2742}
     <span class="sn-badge" id="cartCount" style="display:none">0</span><span data-i18n="navCart">السلة</span></button>
   <button class="sn-item sn-wa" onclick="openWhatsApp()">
     <svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 0 0-8.6 15l-1.3 4.8 4.9-1.3A10 10 0 1 0 12 2zm0 18.2c-1.6 0-3-.4-4.3-1.2l-.3-.2-2.9.8.8-2.8-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.4-.7-1.7-.8-.2-.1-.4-.1-.5.1-.2.2-.6.8-.7 1-.2.1-.3.1-.5 0-1.4-.6-2.3-1.2-3.2-2.8-.2-.4.2-.4.6-1.3.1-.1 0-.3 0-.4 0-.1-.5-1.3-.7-1.8-.2-.5-.4-.4-.5-.4h-.5c-.1 0-.4.1-.6.3-.2.2-.8.8-.8 2s.9 2.3 1 2.5c.1.2 1.7 2.7 4.2 3.7 1.6.6 2.2.7 2.9.6.5-.1 1.4-.6 1.6-1.1.2-.6.2-1 .1-1.1 0-.1-.2-.2-.4-.3z" fill="#25D366"/></svg><span data-i18n="navWa">واتساب</span></button>
-  <button class="sn-item" onclick="adminLogin()">
+  <button class="sn-item" onclick="openAccountSheet()">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="3.4"/><path d="M5 20a7 7 0 0 1 14 0"/></svg><span data-i18n="navAccount">حساب</span></button>
 </nav>
 
@@ -737,6 +737,10 @@ html.dark .pd-thumb{background-color:#1B2742}
       <button class="menu-item" onclick="closeStoreMenu();visitorRegister()">
         <span class="mlabel">سجّل بياناتك / حسابي</span>
         <span class="micon" style="background:#E5EDFF;color:#1D4ED8"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><circle cx="12" cy="8" r="3.4"/><path d="M5 20a7 7 0 0 1 14 0"/></svg></span>
+      </button>
+      <button class="menu-item" onclick="closeStoreMenu();customerLogin()">
+        <span class="mlabel">تسجيل الدخول بحساب</span>
+        <span class="micon" style="background:#DCFCE7;color:#15803D"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5M15 12H3"/></svg></span>
       </button>
       <button class="menu-item" onclick="closeStoreMenu();enableNotifications()">
         <span class="mlabel">تفعيل الإشعارات</span>
@@ -2693,24 +2697,49 @@ function renderMiniPur(){
 let _miniPurPos=null;
 
 /* ---------- العملاء ---------- */
+let custFilter='all';
+function setCustFilter(f){custFilter=f;document.querySelectorAll('#custChips .chip').forEach(b=>b.classList.toggle('active',b.dataset.f===f));renderCustomers();}
 function vCustomers(v){
-  v.innerHTML=`<div class="toolbar"><div class="search">${svg(I.search,17)}<input class="inp" id="cq" placeholder="بحث عن عميل..." oninput="renderCustomers()"></div>
-    <button class="btn btn-primary" onclick="editCustomer()">${svg(I.plus,17)} عميل جديد</button></div>
+  const owed=DB.customers.reduce((a,c)=>a+((c.balance||0)>0?c.balance:0),0);
+  const credit=DB.customers.reduce((a,c)=>a+((c.balance||0)<0?-c.balance:0),0);
+  const debtors=DB.customers.filter(c=>(c.balance||0)>0).length;
+  v.innerHTML=`
+    <div class="cards" style="grid-template-columns:repeat(3,1fr);margin-bottom:14px">
+      <div class="card stat"><span class="label">مستحقّ على الزبائن</span><div class="val t-num" style="font-size:18px;color:var(--danger)">${money(owed)} <small>${CUR()}</small></div></div>
+      <div class="card stat"><span class="label">رصيد دائن لهم</span><div class="val t-num" style="font-size:18px;color:var(--success)">${money(credit)} <small>${CUR()}</small></div></div>
+      <div class="card stat"><span class="label">عدد المدينين</span><div class="val t-num" style="font-size:18px">${debtors}</div></div>
+    </div>
+    <div class="toolbar"><div class="search">${svg(I.search,17)}<input class="inp" id="cq" placeholder="بحث بالاسم أو الهاتف..." oninput="renderCustomers()"></div>
+      <button class="btn btn-primary" onclick="editCustomer()">${svg(I.plus,17)} عميل جديد</button></div>
+    <div id="custChips" style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+      <button class="chip ${custFilter==='all'?'active':''}" data-f="all" onclick="setCustFilter('all')">الكل</button>
+      <button class="chip ${custFilter==='debt'?'active':''}" data-f="debt" onclick="setCustFilter('debt')">عليهم دين</button>
+      <button class="chip ${custFilter==='credit'?'active':''}" data-f="credit" onclick="setCustFilter('credit')">لهم رصيد</button>
+    </div>
     <div class="panel"><div class="tbl-wrap" id="custTable"></div></div>`;
   renderCustomers();
 }
 function renderCustomers(){
   const q=(val('cq')||'').toLowerCase();
-  const list=DB.customers.filter(c=>!q||c.name.toLowerCase().includes(q)||(c.phone||'').includes(q));
-  const el=document.getElementById('custTable');
-  el.innerHTML=list.length?`<table><thead><tr><th>الاسم</th><th>الهاتف</th><th>العنوان</th><th>الرصيد المستحق</th><th></th></tr></thead><tbody>
-    ${list.map(c=>`<tr>
-      <td><b>${esc(c.name)}</b></td><td class="muted t-num">${esc(c.phone||'—')}</td><td class="muted">${esc(c.address||'—')}</td>
-      <td class="t-num">${c.balance>0?`<span class="amt-out">${m(c.balance)}</span>`:c.balance<0?`<span class="amt-in">له ${m(-c.balance)}</span>`:`<span class="badge b-ok">لا ديون</span>`}</td>
+  let list=DB.customers.filter(c=>!q||c.name.toLowerCase().includes(q)||(c.phone||'').includes(q));
+  if(custFilter==='debt')list=list.filter(c=>(c.balance||0)>0);
+  else if(custFilter==='credit')list=list.filter(c=>(c.balance||0)<0);
+  list=list.slice().sort((a,b)=>(b.balance||0)-(a.balance||0));
+  const el=document.getElementById('custTable');if(!el)return;
+  el.innerHTML=list.length?`<table><thead><tr><th>العميل</th><th>الرصيد</th><th></th></tr></thead><tbody>
+    ${list.map(c=>{
+      const av=c.image?`<span style="width:34px;height:34px;border-radius:50%;flex:0 0 auto;background:#e5e7eb center/cover no-repeat;background-image:url(${c.image})"></span>`:`<span style="width:34px;height:34px;border-radius:50%;flex:0 0 auto;display:grid;place-items:center;background:var(--primary-soft);color:var(--primary-d);font-weight:800;font-size:13px">${esc((c.name||'?').trim().charAt(0)||'؟')}</span>`;
+      const wa=custWa(c);const tel=c.phone?('+'+(c.cc||'222')+digitsOnly(c.phone).replace(/^0+/,'')):'';
+      const bal=`<td class="t-num">${c.balance>0?`<span class="amt-out">${m(c.balance)}</span>`:c.balance<0?`<span class="amt-in">له ${m(-c.balance)}</span>`:`<span class="badge b-ok">لا ديون</span>`}</td>`;
+      return `<tr ondblclick="customerStatement('${c.id}')">
+      <td><div style="display:flex;align-items:center;gap:9px">${av}<div><b>${esc(c.name)}</b><div class="muted" style="font-size:11.5px" dir="ltr">${tel||'—'}</div></div></div></td>
+      ${bal}
       <td style="text-align:end;white-space:nowrap">
         <button class="btn btn-sm" onclick="customerStatement('${c.id}')">كشف حساب</button>
-        <button class="btn btn-icon btn-ghost btn-sm" onclick="editCustomer('${c.id}')">${svg(I.edit,16)}</button>
-      </td></tr>`).join('')}</tbody></table>`:`<div class="empty">${svg(I.people,42)}<b>لا يوجد عملاء</b>أضف أول عميل للبدء</div>`;
+        ${wa?`<button class="btn btn-icon btn-ghost btn-sm" title="واتساب" style="color:#16a34a" onclick="waOpen('${wa}','')">${svg(I.wa,16)}</button>`:''}
+        ${tel?`<a class="btn btn-icon btn-ghost btn-sm" title="اتصال" href="tel:${esc(tel)}">${svg(I.phone,16)}</a>`:''}
+        <button class="btn btn-icon btn-ghost btn-sm" title="تعديل" onclick="editCustomer('${c.id}')">${svg(I.edit,16)}</button>
+      </td></tr>`;}).join('')}</tbody></table>`:`<div class="empty">${svg(I.people,42)}<b>لا يوجد عملاء</b>${custFilter!=='all'?'لا عملاء بهذا التصنيف':'أضف أول عميل للبدء'}</div>`;
 }
 function editCustomer(id){
   const c=id?DB.customers.find(x=>x.id===id):{name:'',phone:'',address:'',balance:0};
@@ -2733,33 +2762,48 @@ function editCustomer(id){
     }},{label:'إلغاء',fn:()=>true}]});
 }
 function customerStatement(id){
-  const c=DB.customers.find(x=>x.id===id);
+  const c=DB.customers.find(x=>x.id===id);if(!c)return;
   const invoices=DB.sales.filter(s=>s.customerId===id);
   const pays=(DB.custPays||[]).filter(p=>p.custId===id);
   const totalBuy=invoices.reduce((a,s)=>a+s.total,0);
   const totalPaid=invoices.reduce((a,s)=>a+s.paid,0)+pays.reduce((a,p)=>a+(Number(p.amount)||0),0);
+  // حركة زمنية موحّدة برصيد جاري
+  const entries=[];
+  invoices.forEach(s=>entries.push({date:s.date,debit:s.total,credit:s.paid,label:'فاتورة #'+s.no+(s.type==='credit'?' (آجل)':' (نقدي)')}));
+  pays.forEach(p=>{const a=Number(p.amount)||0;entries.push({date:p.date,debit:a<0?-a:0,credit:a>0?a:0,label:(a>=0?'تحصيل دفعة':'صرف/إرجاع')+(p.note?(' — '+p.note):'')+' · '+boxName(p.box||defBox())});});
+  entries.sort((a,b)=>new Date(a.date)-new Date(b.date));
+  const netEffect=entries.reduce((a,e)=>a+(e.debit-e.credit),0);
+  let running=(c.balance||0)-netEffect;const opening=running;
+  const ledger=entries.map(e=>{running+=(e.debit-e.credit);return `<tr><td class="muted" style="white-space:nowrap">${fmtDate(e.date)}</td><td style="text-align:right">${esc(e.label)}</td><td class="t-num">${e.debit?money(e.debit):'—'}</td><td class="t-num">${e.credit?money(e.credit):'—'}</td><td class="t-num"><b style="color:${running>0?'var(--danger)':running<0?'var(--success)':'inherit'}">${money(running)}</b></td></tr>`;}).join('');
+  const tel=c.phone?('+'+(c.cc||'222')+' '+c.phone):'—';
   modal({title:'كشف حساب: '+esc(c.name),size:'lg',body:`
     <div id="stmt">
-    <div class="cards" style="grid-template-columns:repeat(3,1fr);margin-bottom:14px">
-      <div class="card stat"><span class="label">إجمالي المشتريات</span><div class="val t-num" style="font-size:19px">${m(totalBuy)}</div></div>
-      <div class="card stat"><span class="label">إجمالي المدفوع</span><div class="val t-num" style="font-size:19px;color:var(--success)">${m(totalPaid)}</div></div>
-      <div class="card stat"><span class="label">${c.balance<0?'رصيد دائن له':'الرصيد المتبقي'}</span><div class="val t-num" style="font-size:19px;color:${c.balance>0?'var(--danger)':'var(--success)'}">${m(Math.abs(c.balance))}</div></div>
+    <div style="border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:14px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;font-size:13px">
+      <div><b style="font-size:15px">${esc(c.name)}</b><div class="muted" style="font-size:12px;margin-top:2px" dir="ltr">${esc(tel)}</div>${c.address?`<div class="muted" style="font-size:12px">${esc(c.address)}</div>`:''}</div>
+      <div style="text-align:end"><div class="muted" style="font-size:11.5px">تاريخ الكشف</div><b>${fmtDate(todayISO())}</b></div>
     </div>
-    <b style="font-size:13px">الفواتير</b>
-    ${invoices.length?`<table style="border:1px solid var(--line);margin-top:4px"><thead><tr><th>الفاتورة</th><th>التاريخ</th><th>الإجمالي</th><th>المدفوع</th><th>المتبقي</th></tr></thead><tbody>
-      ${invoices.map(s=>`<tr><td class="code-tag">#${s.no}</td><td class="muted">${fmtDate(s.date)}</td><td class="t-num">${money(s.total)}</td><td class="t-num">${money(s.paid)}</td><td class="t-num">${s.remaining>0?`<span class="amt-out">${money(s.remaining)}</span>`:'0'}</td></tr>`).join('')}
-    </tbody></table>`:`<div class="empty" style="padding:14px">لا توجد فواتير</div>`}
-    ${pays.length?`<b style="font-size:13px;display:block;margin-top:14px">الدفعات والتحصيلات</b>
-    <table style="border:1px solid var(--line);margin-top:4px"><thead><tr><th>التاريخ</th><th>النوع</th><th>المبلغ</th><th>الصندوق</th><th>ملاحظة</th></tr></thead><tbody>
-      ${pays.slice().reverse().map(p=>`<tr><td class="muted">${fmtDate(p.date)}</td><td style="font-size:12px">${(Number(p.amount)||0)>=0?'<span class="badge b-ok">قبض</span>':'<span class="badge" style="background:#FEE2E2;color:#B91C1C">صرف</span>'}</td><td class="t-num"><span class="${(Number(p.amount)||0)>=0?'amt-in':'amt-out'}">${money(Math.abs(Number(p.amount)||0))}</span></td><td style="font-size:12px">${esc(boxName(p.box||defBox()))}</td><td>${esc(p.note||'')}</td></tr>`).join('')}
-    </tbody></table>`:''}
+    <div class="cards" style="grid-template-columns:repeat(3,1fr);margin-bottom:14px">
+      <div class="card stat"><span class="label">إجمالي المشتريات</span><div class="val t-num" style="font-size:18px">${m(totalBuy)}</div></div>
+      <div class="card stat"><span class="label">إجمالي المدفوع</span><div class="val t-num" style="font-size:18px;color:var(--success)">${m(totalPaid)}</div></div>
+      <div class="card stat"><span class="label">${c.balance<0?'رصيد دائن له':'الرصيد المستحقّ'}</span><div class="val t-num" style="font-size:18px;color:${c.balance>0?'var(--danger)':'var(--success)'}">${m(Math.abs(c.balance||0))}</div></div>
+    </div>
+    <b style="font-size:13px">الحركة (مدين / دائن / الرصيد الجاري)</b>
+    <table style="border:1px solid var(--line);margin-top:4px">
+      <thead><tr><th>التاريخ</th><th>البيان</th><th>مدين (عليه)</th><th>دائن (له/مدفوع)</th><th>الرصيد</th></tr></thead>
+      <tbody>
+        <tr style="background:var(--surface-2,#f1f5f9)"><td class="muted">—</td><td style="text-align:right;font-weight:700">رصيد افتتاحي</td><td class="t-num">—</td><td class="t-num">—</td><td class="t-num"><b>${money(opening)}</b></td></tr>
+        ${ledger||''}
+        <tr style="background:var(--primary-soft)"><td></td><td style="text-align:right;font-weight:800">الرصيد الحالي</td><td></td><td></td><td class="t-num"><b style="color:${c.balance>0?'var(--danger)':'var(--success)'}">${money(c.balance||0)}</b></td></tr>
+      </tbody>
+    </table>
+    ${!entries.length?'<div class="empty" style="padding:14px">لا توجد حركات بعد</div>':''}
     </div>`,
     actions:[
       {label:'تسجيل دفعة',primary:true,fn:()=>{collectPayment(id);return true;}},
       {label:'طباعة',icon:I.print,fn:()=>{printEl('stmt');return false;}},
       {label:'تذكير واتساب',icon:I.wa,fn:()=>{waCustomerBalance(id);return false;}},
       {label:'إغلاق',fn:()=>true}
-    ].filter(Boolean)});
+    ]});
 }
 function collectPayment(id){
   const c=DB.customers.find(x=>x.id===id);
@@ -4438,25 +4482,93 @@ function visitorRegister(){
         <input class="inp" id="vrPhone" inputmode="numeric" placeholder="رقم الهاتف" value="${esc(v.phone||'')}" style="flex:1">
       </div>
     </div>
-    <p class="muted" style="font-size:11.5px;margin-top:10px">سيُفتح واتساب لإرسال كود التأكيد إلى المتجر — اضغط إرسال فقط. يصبح حسابك «موثّقاً ✔» بعد أن يؤكّده المتجر.</p>`,
+    <p class="muted" style="font-size:11.5px;margin-top:10px">${done?'يمكنك تحديث بياناتك هنا.':'بعد التسجيل يراجع المتجر حسابك ويُفعّله، ويصلك إشعار.'} يصبح حسابك «موثّقاً ✔» بعد أن يؤكّده المتجر.${!done?'<br><a onclick="closeModal();customerLogin()" style="color:var(--primary);font-weight:700;cursor:pointer">لديك حساب؟ تسجيل الدخول</a>':''}</p>`,
     actions:[
-      {label:'تسجيل وتأكيد عبر واتساب',primary:true,icon:I.wa,fn:()=>{
+      {label:done?'حفظ التعديلات':'تسجيل الحساب',primary:true,icon:I.check,fn:()=>{
         const name=(val('vrName')||'').trim(); const cc=val('vrCc')||'222'; const phone=digitsOnly(val('vrPhone'));
         if(name.length<3){toast('أدخل الاسم الكامل','err');return false;}
         if(phone.length<6){toast('أدخل رقم هاتف صحيح','err');return false;}
-        const code=String(Math.floor(1000+Math.random()*9000));
-        const id=(v&&v.id)||uid('reg');
+        const id=regKey(cc,phone);
         const verified=(v.phone===phone&&v.verified)?true:false;
-        const reg={id,name,cc,phone,code,verified,date:new Date().toISOString(),source:'store',image:_vrImg||''};
+        const reg={id,name,cc,phone,verified,date:new Date().toISOString(),source:'store',image:_vrImg||''};
         setVisitor({id,name,cc,phone,verified,image:_vrImg||''});
         cloudAddRegistration(reg).catch(()=>{});
-        const msg=`السلام عليكم، أنا ${name}.\nأرغب بالتسجيل في متجر ${DB.settings.name||'مؤسسة الصداقة'}.\nرقمي: +${cc}${phone}\nكود التأكيد: ${code}`;
-        waOpen(storeWaNumber(),msg);
-        toast('تم إرسال طلب التسجيل، سنؤكّد رقمك قريباً','ok');
         updateMenuIdentity();
+        if(verified){toast('تم تحديث بياناتك','ok');return true;}
+        setTimeout(awaitingActivationScreen,80);
         return true;
       }},
+      done?{label:'تسجيل الخروج',fn:()=>{customerLogout();return true;}}:null,
       {label:'لاحقاً',fn:()=>true}
+    ].filter(Boolean)});
+}
+function regKey(cc,phone){return digitsOnly(cc||'222')+digitsOnly(phone).replace(/^0+/,'');}
+function openAccountSheet(){
+  const v=getVisitor();const reg=!!(v&&v.id);
+  modal({title:'حسابي',size:'sm',body:`
+    ${reg?`<div style="text-align:center;margin-bottom:14px">
+        <div style="width:66px;height:66px;border-radius:50%;margin:0 auto 8px;background:var(--primary-soft) center/cover no-repeat;${v.image?`background-image:url(${v.image})`:''};display:grid;place-items:center;color:var(--primary-d);border:2px solid var(--line)">${v.image?'':svg(I.people,26)}</div>
+        <b style="font-size:15px">${esc(v.name)}</b> ${v.verified?'<span style="color:#16a34a;font-weight:700">✔ موثّق</span>':'<span style="color:#f59e0b;font-size:12px;font-weight:600">(غير موثّق)</span>'}
+        <div class="muted" style="font-size:12px;margin-top:2px" dir="ltr">+${esc(v.cc||'222')} ${esc(v.phone||'')}</div>
+      </div>`:`<p class="muted" style="font-size:13px;margin-bottom:14px;text-align:center;line-height:1.8">سجّل حسابك أو ادخل بحسابك للاستفادة من المتابعة والعروض.</p>`}
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <button class="btn btn-primary" style="justify-content:center" onclick="closeModal();visitorRegister()">${svg(reg?I.edit:I.people,16)} ${reg?'حسابي / تعديل بياناتي':'سجّل بياناتك'}</button>
+      ${reg
+        ?`<button class="btn" style="justify-content:center;color:var(--danger)" onclick="closeModal();customerLogout()">تسجيل الخروج</button>`
+        :`<button class="btn" style="justify-content:center" onclick="closeModal();customerLogin()">تسجيل الدخول بحساب موجود</button>`}
+      <button class="btn btn-ghost" style="justify-content:center" onclick="closeModal();openStoreMenu()">المزيد من الخيارات</button>
+    </div>`,
+    actions:[{label:t('close'),fn:()=>true}]});
+}
+function customerLogout(){
+  try{localStorage.removeItem('sadaqa_visitor');}catch(e){}
+  window._verifiedToast=false;
+  updateMenuIdentity();
+  toast('تم تسجيل الخروج','ok');
+  showStore();
+}
+function customerLogin(){
+  modal({title:'تسجيل الدخول',size:'sm',body:`
+    <p class="muted" style="font-size:13px;margin-bottom:12px">أدخل رقم هاتفك المسجّل لاستعادة حسابك على هذا الجهاز.</p>
+    <div class="field"><label>رقم الهاتف</label>
+      <div style="display:flex;gap:8px">
+        <select class="inp" id="li_cc" style="max-width:155px">${ccOptions('222')}</select>
+        <input class="inp" id="li_phone" inputmode="numeric" placeholder="رقم الهاتف" style="flex:1">
+      </div>
+    </div>
+    <p class="muted" style="font-size:11.5px;margin-top:10px">ليس لديك حساب؟ <a onclick="closeModal();visitorRegister()" style="color:var(--primary);font-weight:700;cursor:pointer">سجّل حساباً جديداً</a></p>`,
+    actions:[
+      {label:'دخول',primary:true,icon:I.check,fn:()=>{
+        const cc=val('li_cc')||'222';const phone=digitsOnly(val('li_phone'));
+        if(phone.length<6){toast('أدخل رقم هاتف صحيح','err');return false;}
+        toast('جارٍ البحث عن حسابك...','ok');
+        const p=cloudGetReg(regKey(cc,phone));
+        if(p&&p.then){p.then(reg=>{
+          if(reg&&reg.name){setVisitor({id:regKey(cc,phone),name:reg.name,cc:reg.cc||cc,phone:reg.phone||phone,verified:!!reg.verified,image:reg.image||''});updateMenuIdentity();closeModal();toast('مرحباً '+reg.name+(reg.verified?' (موثّق ✔)':' (بانتظار التفعيل)'),'ok');showStore();}
+          else{toast('لا يوجد حساب بهذا الرقم — سجّل حساباً جديداً','err');}
+        }).catch(()=>toast('تعذّر الاتصال — تحقّق من الإنترنت','err'));}
+        else toast('لا اتصال بالسحابة','err');
+        return false;
+      }},
+      {label:'إلغاء',fn:()=>true}
+    ]});
+}
+function awaitingActivationScreen(){
+  const num=storeWaNumber();
+  const disp=num.indexOf('222')===0?('+222 '+num.slice(3)):('+'+num);
+  modal({size:'sm',body:`
+    <div style="text-align:center;padding:8px 6px 2px">
+      <div style="width:78px;height:78px;border-radius:50%;background:var(--primary-soft);display:grid;place-items:center;margin:0 auto 16px">
+        <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="var(--primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      </div>
+      <h2 style="font-size:23px;font-weight:800;margin:0 0 12px">بانتظار التفعيل</h2>
+      <p style="font-size:15px;font-weight:700;margin:0 0 10px">تم تسجيل حسابك بنجاح!</p>
+      <p class="muted" style="font-size:13px;line-height:1.9;margin:0 0 16px">حسابك قيد المراجعة وسيتم تفعيله من قبل الإدارة قريباً. ستتلقّى إشعاراً عند تفعيل الحساب.</p>
+      <div style="font-size:13.5px;margin-bottom:6px">📞 للاستفسار: <a href="tel:${disp.replace(/\s/g,'')}" dir="ltr" style="color:var(--primary);font-weight:800">${disp}</a></div>
+    </div>`,
+    actions:[
+      {label:'الصفحة الرئيسية',primary:true,fn:()=>{showStore();return true;}},
+      {label:'مشاهدة العروض والخصومات',fn:()=>{closeModal();if(typeof scrollToDeals==='function')setTimeout(scrollToDeals,150);return false;}}
     ]});
 }
 function applyDark(){
