@@ -291,7 +291,7 @@ html.dark .inv-sums>div{background:#0E1626}
 .inv-act .btn{flex:1;min-width:calc(50% - 4px);justify-content:center;padding:11px}
 .inv-side-body{display:flex;flex-direction:column;gap:8px;padding:10px 12px}
 .sale-search-wrap{position:relative}
-.sale-results{display:none;flex-direction:column;gap:3px;position:absolute;inset-inline:0;top:calc(100% + 4px);z-index:30;background:var(--surface);border:1px solid var(--primary);border-radius:10px;box-shadow:0 10px 28px rgba(0,0,0,.16);max-height:min(66vh,540px);overflow:auto;padding:5px}
+.sale-results{display:flex;flex-direction:column;gap:3px;position:static;margin-top:6px;z-index:1;background:var(--surface);border:1px solid var(--line);border-radius:10px;max-height:min(62vh,560px);overflow:auto;padding:5px}
 .sale-results.open{display:flex}
 .sale-res.sel{border-color:var(--primary);background:#1D4ED812}
 .sale-res{display:flex;justify-content:space-between;align-items:center;gap:8px;border:1px solid var(--line);border-radius:9px;padding:7px 10px;cursor:pointer;font-size:13px}
@@ -798,16 +798,16 @@ html.dark .pd-thumb{background-color:#1B2742}
 
   <!-- Main -->
   <div class="main">
-    <header class="topbar">
+    <header class="topbar" style="min-height:0;padding-top:6px;padding-bottom:6px">
       <button class="btn btn-icon btn-ghost mtop" onclick="openDrawer()" aria-label="القائمة">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
       </button>
-      <div>
+      <div style="display:none">
         <h1 id="pageTitle">لوحة التحكم</h1>
         <div class="sub" id="pageSub">نظرة عامة على أداء المؤسسة</div>
       </div>
       <div class="spacer"></div>
-      <span class="role-badge" id="roleBadge">—</span>
+      <span class="role-badge" id="roleBadge" style="display:none">—</span>
     </header>
     <div class="erpbar" id="erpbar"></div>
     <main class="content" id="view"></main>
@@ -1064,6 +1064,22 @@ function cloudInit(){
       window._annInit=true;
     }, e=>{});
   }catch(e){}
+  /* تسجيلات الزبائن: تحديث حيّ + إشعار بانتظار التوثيق */
+  try{
+    FS.collection('registrations').onSnapshot(snap=>{
+      const list=snap.docs.map(d=>d.data());
+      DB.registrations=list;try{save();}catch(e){}
+      if(current==='regs'){_regsCache=list.slice();if(typeof regRerender==='function')regRerender();}
+      if(typeof updateRegBadge==='function')updateRegBadge();
+      const pend=list.filter(r=>!r.verified);
+      if(window._regInit){
+        const newest=pend.length?Math.max.apply(null,pend.map(r=>new Date(r.date||0).getTime())):0;
+        const seen=Number(localStorage.getItem('sadaqa_seen_reg')||0);
+        if(pend.length&&newest>seen){try{showInAppNotif('🔔 زبون جديد بانتظار التوثيق',pend.length+' زبون بحاجة لمراجعتك في «تسجيلات الزبائن»');}catch(e){}}
+      }
+      window._regInit=true;
+    }, e=>{});
+  }catch(e){}
 }
 function uid(p){return p+'_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
 function seed(){
@@ -1114,6 +1130,8 @@ if(!DB.custPays)DB.custPays=[];
 if(!DB.vouchers)DB.vouchers=[];
 if(!DB.trash)DB.trash=[];
 if(!DB.registrations)DB.registrations=[];
+if(!DB.workers)DB.workers=[];
+if(!DB.workerLogs)DB.workerLogs=[];
 if(!DB.settings.payNumber)DB.settings.payNumber='20108565';
 if(DB.seq&&!DB.seq.voucher)DB.seq.voucher=1;
 if(!DB.settings.whatsapp)DB.settings.whatsapp='22222227268';
@@ -1337,7 +1355,7 @@ const PAGES=[
   {id:'suppliers',t:'الموردون',sub:'المشتريات والمستحقات',icon:I.truck,hide:1},
   {id:'regs',t:'تسجيلات الزبائن',sub:'طلبات تسجيل من المتجر وتأكيدها',icon:I.phone},
   {id:'vouchers',t:'سندات القبض والدفع',sub:'إيصالات قبض وصرف لكل الحسابات',icon:I.wallet},
-  {id:'expenses',t:'المصروفات',sub:'تسجيل ومتابعة المصاريف',icon:I.expense},
+  {id:'expenses',t:'المصروفات والعمال',sub:'المصاريف وأجور العمال وغياباتهم',icon:I.expense},
   {id:'cash',t:'الصندوق',sub:'الوارد والصادر والرصيد',icon:I.wallet},
   {id:'accounts',t:'الصناديق وتطبيقات البنكية',sub:'الصناديق والتطبيقات البنكية والخدمات',icon:I.wallet},
   {id:'reports',t:'التقارير',sub:'المبيعات والأرباح والمخزون',icon:I.report},
@@ -1347,15 +1365,18 @@ const PAGES=[
   {id:'users',t:'المستخدمون',sub:'حسابات الدخول وكلمات السر والأدوار',icon:I.people},
 ];
 let current='dash';
+function pendingRegCount(){return (DB.registrations||[]).filter(r=>!r.verified).length;}
+function navBadge(id){if(id!=='regs')return '';const n=pendingRegCount();return `<span class="reg-badge" style="margin-inline-start:auto;background:#dc2626;color:#fff;border-radius:10px;min-width:18px;text-align:center;padding:1px 6px;font-size:11px;font-weight:800;display:${n>0?'inline-block':'none'}">${n}</span>`;}
+function updateRegBadge(){const n=pendingRegCount();document.querySelectorAll('.reg-badge').forEach(b=>{b.textContent=n;b.style.display=n>0?'inline-block':'none';});}
 function buildNav(){
   const pages=PAGES.filter(p=>p.sep||(can(p.id)&&!p.hide));
   const html=pages.map(p=>p.sep?'<div class="sep"></div>':
-    `<button data-id="${p.id}" onclick="go('${p.id}')">${svg(p.icon)}<span>${p.t}</span></button>`).join('');
+    `<button data-id="${p.id}" onclick="go('${p.id}')">${svg(p.icon)}<span>${p.t}</span>${navBadge(p.id)}</button>`).join('');
   document.getElementById('nav').innerHTML=html;
   document.getElementById('navDrawer').innerHTML=html;
   const mob=pages.filter(p=>!p.sep).slice(0,5);
   document.getElementById('mnav').innerHTML=mob.map(p=>
-    `<button data-id="${p.id}" onclick="go('${p.id}')">${svg(p.icon,21)}<span>${p.t.split(' ')[0]}</span></button>`).join('');
+    `<button data-id="${p.id}" onclick="go('${p.id}')">${svg(p.icon,21)}<span>${p.t.split(' ')[0]}</span>${navBadge(p.id)}</button>`).join('');
   buildToolbar();
 }
 const TOOLBAR=[
@@ -1365,6 +1386,7 @@ const TOOLBAR=[
   {id:'inventory',t:'المخزون',icon:I.warehouse,c:'#0891b2'},
   {id:'warehouses',t:'المخازن',icon:I.warehouse,c:'#0e7490'},
   {id:'contacts',t:'العملاء والموردون',icon:I.people,c:'#2563eb'},
+  {id:'regs',t:'تسجيلات الزبائن',icon:I.phone,c:'#0891b2'},
   {id:'vouchers',t:'السندات',icon:I.wallet,c:'#0d9488'},
   {id:'expenses',t:'المصروفات',icon:I.expense,c:'#dc2626'},
   {id:'cash',t:'الصندوق',icon:I.wallet,c:'#ca8a04'},
@@ -1378,8 +1400,8 @@ function buildToolbar(){
   const bar=document.getElementById('erpbar');if(!bar)return;
   const items=TOOLBAR.filter(b=>can(b.id));
   bar.innerHTML=`<div class="erp-brand"><div class="logo">ص</div><div><b>مؤسسة الصداقة</b><span>للتجارة العامة</span></div></div>
-    <div class="erp-tools">${items.map(b=>`<button class="erpbtn" data-id="${b.id}" onclick="go('${b.id}')" title="${b.t}">
-      <span class="ei" style="background:${b.c}18;color:${b.c}">${svg(b.icon,20)}</span><small>${b.t}</small></button>`).join('')}</div>`;
+    <div class="erp-tools">${items.map(b=>`<button class="erpbtn" data-id="${b.id}" onclick="go('${b.id}')" title="${b.t}" style="position:relative">
+      <span class="ei" style="background:${b.c}18;color:${b.c}">${svg(b.icon,20)}</span><small>${b.t}</small>${b.id==='regs'?navBadge('regs').replace('margin-inline-start:auto;','position:absolute;top:2px;inset-inline-end:2px;'):''}</button>`).join('')}</div>`;
 }
 function go(id){
   if(!can(id))id=allowedPages()[0]||'dash';
@@ -1997,7 +2019,7 @@ function vSale(v){
       </div>
     </div>
   </div>
-  <style>@media(max-width:900px){.inv-body{grid-template-columns:1fr!important}.inv-hgrid{grid-template-columns:1fr 1fr!important}}</style>`;
+  <style>@media(max-width:900px){.inv-body{grid-template-columns:1fr!important}.inv-hgrid{grid-template-columns:1fr 1fr!important}.inv-side{order:-1}}.inv-main .panel-h{padding-top:8px;padding-bottom:8px}.inv-main .panel-h h3{font-size:13px}</style>`;
   invTypeChange();renderInvItems();renderInvTotals();updateBalRow();renderSaleSearch();renderEntry();
   if(invMin){const w=v.querySelector('.inv-wrap');if(w)w.style.display='none';
     const note=document.createElement('div');note.className='inv-min-note';note.innerHTML=`الفاتورة مصغّرة في نافذة عائمة — اسحبها لأي مكان، واضغط «فتح» للعودة.`;v.appendChild(note);}
@@ -3107,7 +3129,16 @@ function editSupplier(id){
 }
 
 /* ---------- المصروفات ---------- */
+let expTab='exp';
 function vExpenses(v){
+  v.innerHTML=`<div style="display:flex;gap:8px;margin-bottom:14px">
+      <button class="chip ${expTab==='exp'?'active':''}" onclick="expTab='exp';render()">المصروفات</button>
+      <button class="chip ${expTab==='workers'?'active':''}" onclick="expTab='workers';render()">العمال والأجور (${DB.workers.length})</button>
+    </div><div id="expBody"></div>`;
+  const body=document.getElementById('expBody');
+  if(expTab==='workers')vWorkers(body);else vExpensesMain(body);
+}
+function vExpensesMain(v){
   const total=DB.expenses.filter(e=>new Date(e.date)>=startOf('month')).reduce((a,e)=>a+e.amount,0);
   v.innerHTML=`<div class="toolbar">
     <div class="card stat" style="padding:12px 16px;flex:0 0 auto"><span class="label">مصروفات هذا الشهر</span><div class="val t-num" style="font-size:20px">${m(total)}</div></div>
@@ -3119,6 +3150,104 @@ function vExpenses(v){
     ${list.map(e=>`<tr><td><span class="badge b-gray">${esc(e.type)}</span></td><td>${esc(e.note||'—')}</td><td class="muted">${fmtDate(e.date)}</td><td class="t-num"><b class="amt-out">${m(e.amount)}</b></td>
     <td style="text-align:end"><button class="btn btn-icon btn-ghost btn-sm" onclick="delExpense('${e.id}')">${svg(I.trash,16)}</button></td></tr>`).join('')}</tbody></table>`
     :`<div class="empty">${svg(I.expense,42)}<b>لا توجد مصروفات مسجلة</b></div>`;
+}
+function workerBalance(id){const w=DB.workers.find(x=>x.id===id);let b=w?(Number(w.opening)||0):0;
+  (DB.workerLogs||[]).filter(l=>l.workerId===id).forEach(l=>{const a=Number(l.amount)||0;b+=(l.type==='absence'||l.type==='payment')?-a:a;});
+  return b;}
+const WLOG_TYPES={cost:'أجر مستحق',service:'خدمة',addition:'مكافأة/إضافة',absence:'غياب/خصم',payment:'دفعة له'};
+function vWorkers(v){
+  const totalOwe=DB.workers.reduce((a,w)=>{const b=workerBalance(w.id);return a+(b>0?b:0);},0);
+  const reg=DB.workers.filter(w=>w.regular).length;
+  v.innerHTML=`
+    <div class="cards" style="grid-template-columns:repeat(3,1fr);margin-bottom:14px">
+      <div class="card stat"><span class="label">مستحقّ للعمال</span><div class="val t-num" style="font-size:18px;color:var(--danger)">${money(totalOwe)} <small>${CUR()}</small></div></div>
+      <div class="card stat"><span class="label">عدد العمال</span><div class="val t-num" style="font-size:18px">${DB.workers.length}</div></div>
+      <div class="card stat"><span class="label">عمّال منتظمون</span><div class="val t-num" style="font-size:18px;color:var(--success)">${reg}</div></div>
+    </div>
+    <div class="toolbar"><div class="search">${svg(I.search,17)}<input class="inp" id="wq" placeholder="بحث عن عامل..." oninput="renderWorkers()"></div>
+      <button class="btn btn-primary" onclick="editWorker()">${svg(I.plus,17)} عامل جديد</button></div>
+    <div class="panel"><div class="tbl-wrap" id="workersTable"></div></div>`;
+  renderWorkers();
+}
+function renderWorkers(){
+  const q=normAr(val('wq')||'');
+  let list=DB.workers.filter(w=>!q||normAr([w.name,w.phone,w.role].join(' ')).includes(q));
+  list=list.slice().sort((a,b)=>workerBalance(b.id)-workerBalance(a.id));
+  const el=document.getElementById('workersTable');if(!el)return;
+  el.innerHTML=list.length?`<table><thead><tr><th>العامل</th><th>الأجر</th><th>الرصيد</th><th></th></tr></thead><tbody>
+    ${list.map(w=>{const bal=workerBalance(w.id);const tel=w.phone?('+'+(w.cc||'222')+digitsOnly(w.phone).replace(/^0+/,'')):'';
+      return `<tr ondblclick="workerStatement('${w.id}')">
+      <td><div style="display:flex;align-items:center;gap:9px">
+        <span style="width:34px;height:34px;border-radius:50%;flex:0 0 auto;display:grid;place-items:center;background:var(--primary-soft);color:var(--primary-d);font-weight:800">${esc((w.name||'?').trim().charAt(0)||'؟')}</span>
+        <div><b>${esc(w.name)}</b>${w.regular?' <span class="badge b-ok" style="font-size:10px">منتظم</span>':''}<div class="muted" style="font-size:11.5px">${esc(w.role||'عامل')}${tel?(' · '+tel):''}</div></div></div></td>
+      <td class="t-num muted">${w.wage?money(w.wage)+(w.wageType==='daily'?'/يوم':w.wageType==='monthly'?'/شهر':''):'—'}</td>
+      <td class="t-num">${bal>0?`<span class="amt-out">له ${m(bal)}</span>`:bal<0?`<span class="amt-in">عليه ${m(-bal)}</span>`:`<span class="badge b-ok">صفر</span>`}</td>
+      <td style="text-align:end;white-space:nowrap">
+        <button class="btn btn-sm" onclick="workerStatement('${w.id}')">كشف/حركة</button>
+        <button class="btn btn-icon btn-ghost btn-sm" title="تعديل" onclick="editWorker('${w.id}')">${svg(I.edit,16)}</button>
+        <button class="btn btn-icon btn-ghost btn-sm" title="حذف" onclick="delWorker('${w.id}')">${svg(I.trash,16)}</button>
+      </td></tr>`;}).join('')}</tbody></table>`:`<div class="empty">${svg(I.people,42)}<b>لا عمّال بعد</b>أضف أول عامل لحساب أجوره وغياباته</div>`;
+}
+function editWorker(id){
+  const w=id?DB.workers.find(x=>x.id===id):{name:'',cc:'222',phone:'',role:'',wageType:'daily',wage:'',regular:false,opening:0};
+  modal({title:id?'تعديل عامل':'عامل جديد',body:`
+    <div class="grid2">
+      <div class="field"><label>الاسم *</label><input class="inp" id="w_name" value="${esc(w.name||'')}"></div>
+      <div class="field"><label>المهنة / الدور</label><input class="inp" id="w_role" placeholder="حمّال، سائق، بائع..." value="${esc(w.role||'')}"></div>
+      <div class="field"><label>الهاتف</label><input class="inp" id="w_phone" inputmode="numeric" value="${esc(w.phone||'')}"></div>
+      <div class="field"><label>نوع الأجر</label><select class="inp" id="w_wtype"><option value="daily" ${w.wageType==='daily'?'selected':''}>يومي</option><option value="monthly" ${w.wageType==='monthly'?'selected':''}>شهري</option><option value="task" ${w.wageType==='task'?'selected':''}>بالمهمة</option></select></div>
+      <div class="field"><label>قيمة الأجر</label><input class="inp" id="w_wage" type="number" step="any" value="${w.wage||''}"></div>
+      <div class="field"><label>رصيد افتتاحي (له + / عليه −)</label><input class="inp" id="w_open" type="number" step="any" value="${w.opening||0}"></div>
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:14px"><input type="checkbox" id="w_reg" ${w.regular?'checked':''} style="width:18px;height:18px"> عامل منتظم (دائم)</label>`,
+    actions:[{label:'حفظ',primary:true,fn:()=>{
+      const name=val('w_name').trim();if(!name){toast('أدخل الاسم','err');return false;}
+      const obj={id:id||uid('w'),name,cc:w.cc||'222',phone:digitsOnly(val('w_phone')),role:val('w_role').trim(),wageType:val('w_wtype'),wage:parseFloat(val('w_wage'))||0,opening:parseFloat(val('w_open'))||0,regular:document.getElementById('w_reg').checked};
+      if(id){const i=DB.workers.findIndex(x=>x.id===id);DB.workers[i]=Object.assign(DB.workers[i]||{},obj);}else DB.workers.push(obj);
+      save();toast('تم الحفظ','ok');render();return true;}},{label:'إلغاء',fn:()=>true}]});
+}
+function delWorker(id){confirmDlg('حذف العامل؟','سيُحذف العامل وكل حركاته نهائياً.',()=>{DB.workers=DB.workers.filter(x=>x.id!==id);DB.workerLogs=(DB.workerLogs||[]).filter(l=>l.workerId!==id);save();toast('تم الحذف','ok');render();});}
+function workerLog(workerId,preset){
+  const w=DB.workers.find(x=>x.id===workerId);if(!w)return;
+  modal({title:'تسجيل حركة — '+esc(w.name),body:`
+    <div class="field"><label>نوع الحركة</label><select class="inp" id="wl_type">${Object.keys(WLOG_TYPES).map(k=>`<option value="${k}" ${preset===k?'selected':''}>${WLOG_TYPES[k]}</option>`).join('')}</select></div>
+    <div class="field" style="margin-top:10px"><label>المبلغ *</label><input class="inp" id="wl_amt" type="number" step="any"></div>
+    <div class="field" style="margin-top:10px"><label>التاريخ</label><input class="inp" id="wl_date" type="date" value="${todayISO()}"></div>
+    <div class="field" style="margin-top:10px"><label>ملاحظة</label><input class="inp" id="wl_note" placeholder="غياب يومين، أجر أسبوع..."></div>
+    <p class="muted" style="font-size:12px;margin-top:10px">«دفعة له» تُخصم من الصندوق. الغياب/الخصم يُنقص رصيده، والأجر/الخدمة/المكافأة تزيده.</p>`,
+    actions:[{label:'حفظ',primary:true,fn:()=>{
+      const amt=parseFloat(val('wl_amt'))||0;if(amt<=0){toast('أدخل مبلغاً','err');return false;}
+      const type=val('wl_type');const date=val('wl_date')||todayISO();const note=val('wl_note').trim();
+      DB.workerLogs.push({id:uid('wl'),workerId,type,amount:amt,date,note});
+      if(type==='payment')addCash('out',amt,'دفعة للعامل: '+w.name+(note?(' - '+note):''));
+      save();toast('تم التسجيل','ok');setTimeout(()=>workerStatement(workerId),70);return true;}},{label:'إلغاء',fn:()=>true}]});
+}
+function workerStatement(id){
+  const w=DB.workers.find(x=>x.id===id);if(!w)return;
+  const logs=(DB.workerLogs||[]).filter(l=>l.workerId===id).slice().sort((a,b)=>new Date(a.date)-new Date(b.date));
+  let run=Number(w.opening)||0;const opening=run;
+  const rows=logs.map(l=>{const a=Number(l.amount)||0;const dec=(l.type==='absence'||l.type==='payment');run+=dec?-a:a;
+    return `<tr><td class="muted" style="white-space:nowrap">${fmtDate(l.date)}</td><td style="text-align:right">${WLOG_TYPES[l.type]||l.type}${l.note?(' — '+esc(l.note)):''}</td><td class="t-num" style="color:${dec?'var(--danger)':'var(--success)'}">${dec?'−':'+'}${money(a)}</td><td class="t-num"><b>${money(run)}</b></td></tr>`;}).join('');
+  const bal=workerBalance(id);
+  modal({title:'كشف العامل — '+esc(w.name),size:'lg',body:`
+    <div id="wstmt">
+    <div style="border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:12px;font-size:13px">
+      <b style="font-size:15px">${esc(w.name)}</b> ${w.regular?'<span class="badge b-ok">منتظم</span>':''}
+      <div class="muted" style="font-size:12px;margin-top:3px">${esc(w.role||'عامل')} · الأجر: ${w.wage?money(w.wage)+(w.wageType==='daily'?'/يوم':w.wageType==='monthly'?'/شهر':'/مهمة'):'—'}${w.phone?(' · +'+(w.cc||'222')+' '+w.phone):''}</div>
+      <div style="margin-top:8px;font-size:15px">الرصيد: <b style="color:${bal>0?'var(--danger)':bal<0?'var(--success)':'inherit'}">${bal>0?'له '+m(bal):bal<0?'عليه '+m(-bal):'صفر'}</b></div>
+    </div>
+    <table style="border:1px solid var(--line)"><thead><tr><th>التاريخ</th><th>البيان</th><th>المبلغ</th><th>الرصيد</th></tr></thead>
+      <tbody><tr style="background:var(--surface-2,#f1f5f9)"><td class="muted">—</td><td style="text-align:right;font-weight:700">رصيد افتتاحي</td><td class="t-num">—</td><td class="t-num"><b>${money(opening)}</b></td></tr>
+      ${rows}</tbody></table>${!logs.length?'<div class="empty" style="padding:14px">لا حركات بعد</div>':''}
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:12px">
+      <button class="btn btn-sm" onclick="workerLog('${id}','cost')">+ أجر مستحق</button>
+      <button class="btn btn-sm" onclick="workerLog('${id}','service')">+ خدمة</button>
+      <button class="btn btn-sm" onclick="workerLog('${id}','addition')">+ مكافأة</button>
+      <button class="btn btn-sm" style="color:var(--danger)" onclick="workerLog('${id}','absence')">− غياب/خصم</button>
+      <button class="btn btn-sm btn-primary" onclick="workerLog('${id}','payment')">دفعة له</button>
+    </div>`,
+    actions:[{label:'طباعة',icon:I.print,fn:()=>{printEl('wstmt');return false;}},{label:'إغلاق',primary:true,fn:()=>true}]});
 }
 function addExpense(){
   const types=['إيجار','رواتب','نقل','كهرباء','ماء','أخرى'];
@@ -3491,9 +3620,10 @@ function vRegs(v){
       <div id="regsList">${_regsCache?regsTable(_regsCache):'<div class="muted" style="padding:14px">جارٍ التحميل من السحابة...</div>'}</div>
     </div></div>`;
   regsRefresh();
+  try{localStorage.setItem('sadaqa_seen_reg',Date.now());}catch(e){}
 }
 function regsRefresh(){
-  const fill=list=>{_regsCache=(list||[]).slice();const el=document.getElementById('regsList');if(el)el.innerHTML=regsTable(_regsCache);};
+  const fill=list=>{_regsCache=(list||[]).slice();const el=document.getElementById('regsList');if(el)el.innerHTML=regsTable(_regsCache);if(typeof updateRegBadge==='function')updateRegBadge();};
   const p=cloudFetchRegistrations();
   if(p&&p.then){p.then(list=>{if(list===null){fill(DB.registrations||[]);}else{DB.registrations=list;save();fill(list);}}).catch(()=>fill(DB.registrations||[]));}
   else fill(DB.registrations||[]);
@@ -3518,10 +3648,10 @@ function regsTable(list){
 }
 function regFind(id){return (_regsCache||DB.registrations||[]).find(r=>r.id===id);}
 function regRerender(){const el=document.getElementById('regsList');if(el)el.innerHTML=regsTable(_regsCache);}
-function regVerify(id){const r=regFind(id);if(!r)return;r.verified=true;cloudSetReg(id,{verified:true}).catch(()=>{});regToCustomer(id,true);toast('تم تأكيد الزبون وإضافته للعملاء','ok');regRerender();}
+function regVerify(id){const r=regFind(id);if(!r)return;r.verified=true;cloudSetReg(id,{verified:true}).catch(()=>{});regToCustomer(id,true);toast('تم تأكيد الزبون وإضافته للعملاء','ok');regRerender();if(typeof updateRegBadge==='function')updateRegBadge();}
 function regSendCode(id){const r=regFind(id);if(!r)return;const code=r.code||String(Math.floor(1000+Math.random()*9000));r.code=code;cloudSetReg(id,{code}).catch(()=>{});waOpen(waNum(r.cc,r.phone),`مرحباً ${r.name}، كود التأكيد الخاص بك في ${DB.settings.name||'مؤسسة الصداقة'}: ${code}`);}
 function regToCustomer(id,silent){const r=regFind(id);if(!r)return;const exists=DB.customers.find(c=>digitsOnly(c.phone)===digitsOnly(r.phone)&&(c.cc||'222')===(r.cc||'222'));if(exists){if(!silent)toast('الزبون موجود مسبقاً في العملاء','ok');return;}DB.customers.push({id:uid('c'),name:r.name,cc:r.cc||'222',phone:r.phone,phone2:'',fax:'',address:'',image:r.image||'',balance:0});save();if(!silent)toast('تمت إضافته إلى العملاء','ok');}
-function regDelete(id){confirmDlg('حذف التسجيل؟','سيُحذف طلب التسجيل نهائياً.',()=>{_regsCache=(_regsCache||[]).filter(r=>r.id!==id);DB.registrations=(DB.registrations||[]).filter(r=>r.id!==id);cloudDelReg(id).catch(()=>{});save();regRerender();toast('تم الحذف','ok');});}
+function regDelete(id){confirmDlg('حذف التسجيل؟','سيُحذف طلب التسجيل نهائياً.',()=>{_regsCache=(_regsCache||[]).filter(r=>r.id!==id);DB.registrations=(DB.registrations||[]).filter(r=>r.id!==id);cloudDelReg(id).catch(()=>{});save();regRerender();if(typeof updateRegBadge==='function')updateRegBadge();toast('تم الحذف','ok');});}
 
 /* ---------- الإشعارات والعروض ---------- */
 let _annCache=null,_annImg=null;
