@@ -1130,10 +1130,10 @@ if(!DB.users||!DB.users.length){
 }
 // صلاحيات كل دور (أقسام لوحة الإدارة المسموحة)
 const ROLE_PAGES={
-  'صاحب':['dash','today','store','inventory','warehouses','sale','purchase','customers','suppliers','regs','vouchers','expenses','cash','reports','notify','settings','users'],
-  'مدير':['dash','today','store','inventory','warehouses','sale','purchase','customers','suppliers','regs','vouchers','expenses','cash','reports','notify','settings','users'],
-  'محاسب':['dash','today','customers','suppliers','regs','vouchers','expenses','cash','reports'],
-  'مسيّر':['today','store','inventory','warehouses','sale','purchase'],
+  'صاحب':['dash','today','store','inventory','warehouses','invoice','sale','purchase','contacts','customers','suppliers','regs','vouchers','expenses','cash','accounts','reports','notify','settings','users'],
+  'مدير':['dash','today','store','inventory','warehouses','invoice','sale','purchase','contacts','customers','suppliers','regs','vouchers','expenses','cash','accounts','reports','notify','settings','users'],
+  'محاسب':['dash','today','contacts','customers','suppliers','regs','vouchers','expenses','cash','accounts','reports'],
+  'مسيّر':['today','store','inventory','warehouses','invoice','sale','purchase'],
 };
 let CUR_USER=null;
 function allowedPages(){return CUR_USER?(ROLE_PAGES[CUR_USER.role]||['dash']):[];}
@@ -1168,6 +1168,10 @@ function productTag(p){
 const CUR=()=>DB.settings.currency||'د.ع';
 function money(n){n=Number(n)||0;return n.toLocaleString('en-US',{maximumFractionDigits:2});}
 function m(n){return money(n)+' '+CUR();}
+function normAr(s){return String(s==null?'':s).toLowerCase()
+  .replace(/[\u064B-\u0652\u0670\u0640]/g,'')
+  .replace(/[أإآ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').replace(/ؤ/g,'و').replace(/ئ/g,'ي').replace(/ء/g,'')
+  .replace(/\s+/g,' ').trim();}
 function todayISO(){return new Date().toISOString().slice(0,10);}
 const AR_MONTHS=['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
 const FR_MONTHS=['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
@@ -1323,16 +1327,19 @@ const PAGES=[
   {id:'store',t:'المتجر والمنتجات',sub:'عرض وإدارة أكثر من 2000 مادة',icon:I.store,m:1},
   {id:'inventory',t:'المخزون والجرد',sub:'الكميات والتنبيهات',icon:I.warehouse,m:1},
   {id:'warehouses',t:'المخازن',sub:'إدارة مخازن المؤسسة',icon:I.warehouse,m:1},
-  {id:'sale',t:'فاتورة بيع',sub:'إصدار فاتورة جديدة',icon:I.invoice,m:1},
+  {id:'invoice',t:'فاتورة بيع / شراء',sub:'إصدار فاتورة جديدة',icon:I.invoice,m:1},
+  {id:'sale',t:'فاتورة بيع',sub:'إصدار فاتورة جديدة',icon:I.invoice,m:1,hide:1},
   {id:'today',t:'دفتر اليومية',sub:'حركة اليوم: مبيعات ومشتريات وسندات',icon:I.report,m:1},
-  {id:'purchase',t:'فاتورة شراء',sub:'استلام بضاعة من مورد',icon:I.truck},
+  {id:'purchase',t:'فاتورة شراء',sub:'استلام بضاعة من مورد',icon:I.truck,hide:1},
   {sep:1},
-  {id:'customers',t:'العملاء',sub:'الأرصدة وكشوف الحسابات',icon:I.people},
-  {id:'suppliers',t:'الموردون',sub:'المشتريات والمستحقات',icon:I.truck},
+  {id:'contacts',t:'العملاء والموردون',sub:'الأرصدة وكشوف الحسابات',icon:I.people},
+  {id:'customers',t:'العملاء',sub:'الأرصدة وكشوف الحسابات',icon:I.people,hide:1},
+  {id:'suppliers',t:'الموردون',sub:'المشتريات والمستحقات',icon:I.truck,hide:1},
   {id:'regs',t:'تسجيلات الزبائن',sub:'طلبات تسجيل من المتجر وتأكيدها',icon:I.phone},
   {id:'vouchers',t:'سندات القبض والدفع',sub:'إيصالات قبض وصرف لكل الحسابات',icon:I.wallet},
   {id:'expenses',t:'المصروفات',sub:'تسجيل ومتابعة المصاريف',icon:I.expense},
   {id:'cash',t:'الصندوق',sub:'الوارد والصادر والرصيد',icon:I.wallet},
+  {id:'accounts',t:'الصناديق وتطبيقات البنكية',sub:'الصناديق والتطبيقات البنكية والخدمات',icon:I.wallet},
   {id:'reports',t:'التقارير',sub:'المبيعات والأرباح والمخزون',icon:I.report},
   {id:'notify',t:'الإشعارات والعروض',sub:'أرسل عروضاً وإشعارات لزبائنك',icon:I.alert},
   {sep:1},
@@ -1341,7 +1348,7 @@ const PAGES=[
 ];
 let current='dash';
 function buildNav(){
-  const pages=PAGES.filter(p=>p.sep||can(p.id));
+  const pages=PAGES.filter(p=>p.sep||(can(p.id)&&!p.hide));
   const html=pages.map(p=>p.sep?'<div class="sep"></div>':
     `<button data-id="${p.id}" onclick="go('${p.id}')">${svg(p.icon)}<span>${p.t}</span></button>`).join('');
   document.getElementById('nav').innerHTML=html;
@@ -1352,17 +1359,16 @@ function buildNav(){
   buildToolbar();
 }
 const TOOLBAR=[
-  {id:'sale',t:'فاتورة بيع',icon:I.invoice,c:'#16a34a'},
+  {id:'invoice',t:'فاتورة بيع/شراء',icon:I.invoice,c:'#16a34a'},
   {id:'today',t:'دفتر اليومية',icon:I.report,c:'#ea580c'},
-  {id:'purchase',t:'فاتورة شراء',icon:I.truck,c:'#7c3aed'},
   {id:'store',t:'المنتجات',icon:I.store,c:'#1D4ED8'},
   {id:'inventory',t:'المخزون',icon:I.warehouse,c:'#0891b2'},
   {id:'warehouses',t:'المخازن',icon:I.warehouse,c:'#0e7490'},
-  {id:'customers',t:'العملاء',icon:I.people,c:'#2563eb'},
-  {id:'suppliers',t:'الموردون',icon:I.truck,c:'#9333ea'},
+  {id:'contacts',t:'العملاء والموردون',icon:I.people,c:'#2563eb'},
   {id:'vouchers',t:'السندات',icon:I.wallet,c:'#0d9488'},
   {id:'expenses',t:'المصروفات',icon:I.expense,c:'#dc2626'},
   {id:'cash',t:'الصندوق',icon:I.wallet,c:'#ca8a04'},
+  {id:'accounts',t:'الصناديق والبنكية',icon:I.wallet,c:'#0f766e'},
   {id:'reports',t:'التقارير',icon:I.report,c:'#0d9488'},
   {id:'dash',t:'لوحة التحكم',icon:I.dash,c:'#475569'},
   {id:'settings',t:'الإعدادات',icon:I.settings,c:'#64748b'},
@@ -1377,6 +1383,7 @@ function buildToolbar(){
 }
 function go(id){
   if(!can(id))id=allowedPages()[0]||'dash';
+  if(id==='invoice')invMode='sale';
   current=id;closeDrawer();
   const p=PAGES.find(x=>x.id===id);
   document.getElementById('pageTitle').textContent=p.t;
@@ -1391,8 +1398,8 @@ function closeDrawer(){document.getElementById('drawer').classList.remove('open'
 /* ====================== العرض الرئيسي ====================== */
 function render(){
   const v=document.getElementById('view');
-  ({dash:vDash,store:vStore,inventory:vInventory,warehouses:vWarehouses,sale:vSale,today:vToday,purchase:vPurchase,customers:vCustomers,
-    suppliers:vSuppliers,regs:vRegs,vouchers:vVouchers,expenses:vExpenses,cash:vCash,reports:vReports,notify:vNotify,settings:vSettings,users:vUsers}[current]||vDash)(v);
+  ({dash:vDash,store:vStore,inventory:vInventory,warehouses:vWarehouses,invoice:vInvoice,sale:vSale,today:vToday,purchase:vPurchase,contacts:vContacts,customers:vCustomers,
+    suppliers:vSuppliers,regs:vRegs,vouchers:vVouchers,expenses:vExpenses,cash:vCash,accounts:vAccounts,reports:vReports,notify:vNotify,settings:vSettings,users:vUsers}[current]||vDash)(v);
   if(typeof renderMiniInv==='function')renderMiniInv();
   if(typeof renderMiniPur==='function')renderMiniPur();
 }
@@ -1415,10 +1422,10 @@ function vDash(v){
   ];
   // شريط اختصارات (حسب صلاحية الدور)
   const tools=[];
-  if(can('sale'))tools.push(['فاتورة بيع',I.invoice,"go('sale')"]);
-  if(can('purchase'))tools.push(['فاتورة شراء',I.truck,"go('purchase')"]);
+  if(can('invoice'))tools.push(['فاتورة بيع',I.invoice,"newInvoice()"]);
+  if(can('invoice'))tools.push(['فاتورة شراء',I.truck,"newPurchase()"]);
   if(can('store'))tools.push(['منتج جديد',I.box,"editProduct()"]);
-  if(can('customers'))tools.push(['عميل جديد',I.people,"editCustomer()"]);
+  if(can('contacts'))tools.push(['عميل جديد',I.people,"editCustomer()"]);
   if(can('expenses'))tools.push(['مصروف',I.expense,"go('expenses')"]);
   if(can('cash'))tools.push(['الصندوق',I.wallet,"go('cash')"]);
   if(can('reports'))tools.push(['التقارير',I.report,"go('reports')"]);
@@ -1436,7 +1443,7 @@ function vDash(v){
       </div>
       <div class="panel" style="margin-top:16px">
         <div class="panel-h">${svg(I.invoice,18)}<h3>أحدث الفواتير</h3><div class="spacer"></div>
-          ${can('sale')?`<button class="btn btn-primary btn-sm" onclick="go('sale')">${svg(I.plus,16)} فاتورة جديدة</button>`:''}</div>
+          ${can('invoice')?`<button class="btn btn-primary btn-sm" onclick="newInvoice()">${svg(I.plus,16)} فاتورة جديدة</button>`:''}</div>
         <div class="tbl-wrap">${recentSalesTable()}</div>
       </div>
       ${can('store')?`<div class="panel" style="margin-top:16px">
@@ -1514,6 +1521,8 @@ function vStore(v){
     <div class="search">${svg(I.search,17)}<input class="inp" id="pq" placeholder="بحث بالاسم أو الكود..." value="${esc(storeFilter.q)}" oninput="storeFilter.q=this.value;renderProducts()"></div>
     <button class="btn" onclick="scanBarcode(c=>{storeFilter.q=c;const e=document.getElementById('pq');if(e)e.value=c;renderProducts()})" title="مسح باركود">${svg(I.search,17)} مسح</button>
     <button class="btn" onclick="openImageSearch('admin')" title="بحث بصورة">${svg(I.box,17)} بحث بصورة</button>
+    <button class="btn" onclick="toggleSelMode()" title="تحديد متعدد">${svg(I.check,17)} تحديد</button>
+    <button class="btn" onclick="dedupeProducts()" title="حذف المكرّرات">${svg(I.trash,17)} المكرّرات</button>
     <button class="btn" onclick="importCSV()">${svg(I.upload,17)} استيراد Excel/CSV</button>
     <button class="btn btn-primary" onclick="editProduct()">${svg(I.plus,17)} منتج جديد</button>
   </div>
@@ -1528,10 +1537,10 @@ function renderChips(){
       return `<button class="chip ${storeFilter.cat===c?'active':''}" onclick="storeFilter.cat='${esc(c)}';renderChips();renderProducts()">${esc(c)} (${n})</button>`;}).join('');
 }
 function filteredProducts(){
-  const q=storeFilter.q.trim().toLowerCase();
+  const q=normAr(storeFilter.q);
   return DB.products.filter(p=>{
     if(storeFilter.cat&&p.category!==storeFilter.cat)return false;
-    if(q&&!(p.name.toLowerCase().includes(q)||(p.code||'').toLowerCase().includes(q)))return false;
+    if(q){const hay=normAr([p.name,p.nameFr,p.code,p.category,p.desc].join(' '));if(!hay.includes(q))return false;}
     return true;
   }).sort((a,b)=>(a.name||'').localeCompare(b.name||'','ar'));
 }
@@ -1540,7 +1549,7 @@ function productHistory(id){
   const match=it=>(it.id&&it.id===p.id)||(it.code&&p.code&&it.code===p.code)||(it.name===p.name);
   const moves=[];
   (DB.sales||[]).forEach(s=>{(s.items||[]).forEach(it=>{if(it.service)return;if(match(it))
-    moves.push({date:s.date,kind:'sale',type:s.type,party:s.customerName||'عميل نقدي',qty:Number(it.qty)||0,price:Number(it.price)||0,total:it.total!=null?it.total:(it.price*it.qty),no:s.no,id:s.id});});});
+    moves.push({date:s.date,kind:'sale',type:s.type,party:s.customerName||'نقدي',qty:Number(it.qty)||0,price:Number(it.price)||0,total:it.total!=null?it.total:(it.price*it.qty),no:s.no,id:s.id});});});
   (DB.purchases||[]).forEach(pu=>{(pu.items||[]).forEach(it=>{if(match(it))
     moves.push({date:pu.date,kind:'pur',type:pu.type,party:pu.supplierName||'مورد',qty:Number(it.qty)||0,price:Number(it.cost)||0,total:it.total!=null?it.total:(it.cost*it.qty),no:pu.no,id:pu.id});});});
   moves.sort((a,b)=>new Date(b.date)-new Date(a.date));
@@ -1578,14 +1587,34 @@ function productHistory(id){
     :`<div class="empty" style="padding:28px">${svg(I.invoice,32)}<span>لا توجد حركة على هذه المادة بعد</span></div>`}`,
     actions:[{label:'إغلاق',primary:true,fn:()=>true}]});
 }
+let selMode=false; let selProd=new Set();
+function toggleSelMode(){selMode=!selMode;selProd.clear();renderProducts();}
+function selToggle(id,cb){if(cb.checked)selProd.add(id);else selProd.delete(id);const n=document.getElementById('selCount');if(n)n.textContent=selProd.size;}
+function selectAllProd(){const list=filteredProducts();const allSel=list.length&&list.every(p=>selProd.has(p.id));list.forEach(p=>{allSel?selProd.delete(p.id):selProd.add(p.id);});renderProducts();}
+function bulkDeleteProd(){
+  if(!selProd.size){toast('لم تحدّد أي مادة','err');return;}
+  confirmDlg('حذف المواد المحدّدة؟',`سيتم حذف ${selProd.size} مادة نهائياً. لا يمكن التراجع.`,()=>{
+    const ids=[...selProd];
+    ids.forEach(id=>{DB.products=DB.products.filter(x=>x.id!==id);cloudDelProduct(id);});
+    selProd.clear();selMode=false;save();toast(`تم حذف ${ids.length} مادة`,'ok');render();
+  });
+}
 function renderProducts(){
   const el=document.getElementById('prodTable');if(!el)return;
   const list=filteredProducts();
-  if(!list.length){el.innerHTML=`<div class="empty">${svg(I.box,42)}<b>لا توجد منتجات مطابقة</b>جرّب تعديل البحث أو أضف منتجاً جديداً</div>`;return;}
-  el.innerHTML=`<table><thead><tr>
-    <th>المنتج</th><th>القسم</th><th>سعر البيع</th><th>سعر الجملة</th><th>الكمية</th><th>الحالة</th><th></th>
+  const bar=selMode?`<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 12px;background:var(--primary-soft);border-radius:10px;margin-bottom:10px">
+      <b>المحدّد: <span id="selCount">${selProd.size}</span></b>
+      <div class="spacer" style="flex:1"></div>
+      <button class="btn btn-sm" onclick="selectAllProd()">تحديد الكل</button>
+      <button class="btn btn-sm" style="background:var(--danger);color:#fff;border-color:var(--danger)" onclick="bulkDeleteProd()">${svg(I.trash,14)} حذف المحدّد</button>
+      <button class="btn btn-sm btn-ghost" onclick="toggleSelMode()">إلغاء</button>
+    </div>`:'';
+  if(!list.length){el.innerHTML=bar+`<div class="empty">${svg(I.box,42)}<b>لا توجد منتجات مطابقة</b>جرّب تعديل البحث أو أضف منتجاً جديداً</div>`;return;}
+  el.innerHTML=bar+`<table><thead><tr>
+    ${selMode?'<th style="width:34px"></th>':''}<th>المنتج</th><th>القسم</th><th>سعر البيع</th><th>سعر الجملة</th><th>الكمية</th><th>الحالة</th><th></th>
   </tr></thead><tbody>
-  ${list.map(p=>{const s=stockStatus(p);return`<tr>
+  ${list.map(p=>{const s=stockStatus(p);return`<tr${selMode?` style="cursor:pointer" onclick="if(event.target.tagName!=='INPUT'){const cb=this.querySelector('input');cb.checked=!cb.checked;selToggle('${p.id}',cb);}"`:''}>
+    ${selMode?`<td style="text-align:center"><input type="checkbox" style="width:18px;height:18px" ${selProd.has(p.id)?'checked':''} onchange="selToggle('${p.id}',this)"></td>`:''}
     <td><div style="display:flex;align-items:center;gap:10px">
       <span style="width:40px;height:40px;border-radius:9px;flex:0 0 auto;background:#f1f5f9 center/cover no-repeat;${p.image?`background-image:url(${p.image})`:''};display:grid;place-items:center;color:var(--muted)">${p.image?'':svg(I.box,18)}</span>
       <span><b>${esc(p.name)}</b><div class="code-tag" style="margin-top:2px;display:inline-block">${esc(p.code||'—')}</div></span>
@@ -1846,7 +1875,7 @@ function adjustStock(id){
 /* ---------- فاتورة بيع ---------- */
 let cart=[];let saleCustomer='';let saleWh='';let editSaleId='';let editPurId='';
 function stockOf(p,wid){ensureStock(p);return Number(p.stock[wid])||0;}
-let invType='cash';let _pickedId='';let saleBox='';let invMin=false;let invPayments=[];
+let invType='cash';let invMode='sale';let _saleSelIdx=-1;let _pickedId='';let saleBox='';let invMin=false;let invPayments=[];
 let _ncImg='';
 function ncPickImg(input){const f=input.files[0];if(!f)return;downscaleImage(f,d=>{_ncImg=d||'';const im=document.getElementById('nc_imgPrev');if(im&&_ncImg){im.style.backgroundImage='url('+_ncImg+')';im.classList.add('has');}});}
 function newCustomerQuick(){
@@ -1895,6 +1924,19 @@ function pickService(id){const s=(DB.services||[]).find(x=>x.id===id);if(!s)retu
   closeModal();invRefresh();toast('أُضيفت الخدمة: '+s.name,'ok');}
 function lineCalc(l){const gross=(Number(l.price)||0)*(Number(l.qty)||0);const disc=Math.min(Number(l.disc)||0,gross);const total=gross-disc;const profit=total-(Number(l.cost)||0)*(Number(l.qty)||0);return{gross,disc,total,profit};}
 function dayName(iso){const d=['الأحد','الإثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];return d[new Date(iso).getDay()];}
+function vInvoice(v){
+  const pur=invMode==='purchase';
+  v.innerHTML=`<div id="invWrap" class="${pur?'inv-purchase':''}" style="${pur?'background:#FEF2F2;border-radius:14px;padding:8px;box-shadow:inset 0 0 0 1.5px #FECACA':''}"></div>`;
+  const inner=document.getElementById('invWrap');
+  if(pur)vPurchase(inner);else vSale(inner);
+}
+function invKindChange(v){
+  const parts=String(v).split('|');const mode=parts[0],type=parts[1]||'cash';
+  invMode=(mode==='pur')?'purchase':'sale';
+  if(invMode==='sale')invType=type;else purType=type;
+  if(current!=='invoice'){current='invoice';const p=PAGES.find(x=>x.id==='invoice');if(p){document.getElementById('pageTitle').textContent=p.t;document.getElementById('pageSub').textContent=p.sub;}}
+  render();
+}
 function vSale(v){
   if(!saleWh||!(DB.warehouses||[]).some(w=>w.id===saleWh))saleWh=defWh();
   if(!saleBox||!boxes().some(b=>b.id===saleBox))saleBox=defBox();
@@ -1905,9 +1947,11 @@ function vSale(v){
     <div class="inv-head">
       <div class="inv-hgrid">
         <div class="field"><label>نوع الفاتورة</label>
-          <select class="inp" id="invType" onchange="invTypeChange()">
-            <option value="cash" ${invType==='cash'?'selected':''}>بيع نقدي</option>
-            <option value="credit" ${invType==='credit'?'selected':''}>بيع آجل</option>
+          <select class="inp" id="invKind" onchange="invKindChange(this.value)">
+            <option value="sale|cash" ${invMode!=='purchase'&&invType==='cash'?'selected':''}>بيع نقدي</option>
+            <option value="sale|credit" ${invMode!=='purchase'&&invType==='credit'?'selected':''}>بيع آجل</option>
+            <option value="pur|cash">شراء نقدي</option>
+            <option value="pur|credit">شراء آجل</option>
           </select></div>
         <div class="field"><label>رقم الفاتورة</label><input class="inp" value="${nextNo}" disabled></div>
         <div class="field"><label>التاريخ</label><input class="inp" id="invDate" type="date" value="${today}" onchange="updateBalRow()"></div>
@@ -1921,7 +1965,7 @@ function vSale(v){
         <div class="field" id="custField"><label>العميل / لأجل</label>
           <div style="display:flex;gap:6px">
             <select class="inp" id="saleCustomer" onchange="saleCustomer=this.value;updateBalRow()" style="flex:1">
-              <option value="">عميل نقدي</option>
+              <option value="">نقدي (بدون زبون) — يُسجّل على الصندوق/الحساب المختار</option>
               ${DB.customers.map(c=>`<option value="${c.id}" ${saleCustomer===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}
             </select>
             <button class="btn btn-sm" title="حساب جديد" onclick="newCustomerQuick()" style="flex:none">${svg(I.plus,15)}</button>
@@ -1944,8 +1988,8 @@ function vSale(v){
         <div class="inv-side-body">
           <div class="sale-search-wrap">
             <div class="search" style="max-width:none"><span></span>${svg(I.search,16)}
-              <input class="inp" id="saleSearch" placeholder="ابحث بالاسم أو الرمز..." autocomplete="off"
-                oninput="renderSaleSearch();saleResShow(true)" onfocus="renderSaleSearch();saleResShow(true)" onblur="setTimeout(()=>saleResShow(false),180)"></div>
+              <input class="inp" id="saleSearch" placeholder="ابحث بالاسم أو الرمز... (استخدم ↑↓ و Enter)" autocomplete="off"
+                oninput="_saleSelIdx=-1;renderSaleSearch();saleResShow(true)" onfocus="renderSaleSearch();saleResShow(true)" onkeydown="saleSearchKey(event)" onblur="setTimeout(()=>saleResShow(false),180)"></div>
             <div id="saleResults" class="sale-results"></div>
           </div>
           <div id="invEntry"></div>
@@ -1960,7 +2004,7 @@ function vSale(v){
 }
 function invRefresh(){renderInvItems();renderInvTotals();renderSaleSearch();renderEntry();updateBalRow();}
 function invTypeChange(){
-  invType=val('invType')||'cash';
+  invType=val('invType')||invType||'cash';
   const cf=document.getElementById('custField');if(cf)cf.style.display=invType==='credit'?'':'none';
   if(invType==='cash'){saleCustomer='';}
   updateBalRow();
@@ -1976,16 +2020,26 @@ function updateBalRow(){
 }
 function renderSaleSearch(){
   const box=document.getElementById('saleResults');if(!box)return;
-  const q=(val('saleSearch')||'').trim().toLowerCase();
+  const q=normAr(val('saleSearch')||'');
   let list=DB.products;
-  if(q)list=list.filter(p=>p.name.toLowerCase().includes(q)||(p.code||'').toLowerCase().includes(q));
+  if(q)list=list.filter(p=>normAr([p.name,p.nameFr,p.code,p.category,p.desc].join(' ')).includes(q));
   list=list.slice(0,80);
-  box.innerHTML=list.length?list.map(p=>{const av=stockOf(p,saleWh);return `<div class="sale-res ${av<=0?'dim':''} ${_pickedId===p.id?'sel':''}" onpointerdown="event.preventDefault();invPick('${p.id}')">
+  window._saleResIds=list.map(p=>p.id);
+  if(_saleSelIdx>=list.length)_saleSelIdx=list.length-1;
+  box.innerHTML=list.length?list.map((p,i)=>{const av=stockOf(p,saleWh);return `<div class="sale-res ${av<=0?'dim':''} ${(_saleSelIdx===i||(_saleSelIdx<0&&_pickedId===p.id))?'sel':''}" data-i="${i}" onpointerdown="event.preventDefault();invPick('${p.id}')">
     <div><b>${esc(p.name)}</b><span>${esc(p.code||'')} · متوفر: ${money(av)}</span></div><div class="t-num">${money(p.price)}</div></div>`;}).join('')
     :`<div class="sale-res dim"><div>لا نتائج</div></div>`;
 }
+function saleSearchKey(e){
+  const ids=window._saleResIds||[];if(!ids.length&&e.key!=='Enter')return;
+  if(e.key==='ArrowDown'){e.preventDefault();_saleSelIdx=Math.min((_saleSelIdx<0?-1:_saleSelIdx)+1,ids.length-1);renderSaleSearch();saleResShow(true);scrollSelRes();}
+  else if(e.key==='ArrowUp'){e.preventDefault();_saleSelIdx=Math.max((_saleSelIdx<0?0:_saleSelIdx)-1,0);renderSaleSearch();saleResShow(true);scrollSelRes();}
+  else if(e.key==='Enter'){if(_saleSelIdx>=0&&ids[_saleSelIdx]){e.preventDefault();invPick(ids[_saleSelIdx]);_saleSelIdx=-1;}}
+  else if(e.key==='Escape'){saleResShow(false);_saleSelIdx=-1;}
+}
+function scrollSelRes(){const box=document.getElementById('saleResults');if(!box)return;const el=box.querySelector('.sale-res.sel');if(el&&el.scrollIntoView)el.scrollIntoView({block:'nearest'});}
 function saleResShow(b){const r=document.getElementById('saleResults');if(r)r.classList.toggle('open',!!b);}
-function invPick(id){_pickedId=id;saleResShow(false);const s=document.getElementById('saleSearch');if(s)s.value='';renderEntry();}
+function invPick(id){_pickedId=id;_saleSelIdx=-1;saleResShow(false);const s=document.getElementById('saleSearch');if(s)s.value='';renderEntry();}
 function renderEntry(){
   const box=document.getElementById('invEntry');if(!box)return;
   const p=DB.products.find(x=>x.id===_pickedId);
@@ -2132,7 +2186,7 @@ function invPrintCurrent(){
   if(!cart.length){toast('الفاتورة فارغة','err');return;}
   const cust=DB.customers.find(c=>c.id===saleCustomer);
   const preview={no:'مسودة',type:invType,date:new Date().toISOString(),
-    customerName:cust?cust.name:'عميل نقدي',warehouseName:whName(saleWh),
+    customerName:cust?cust.name:(boxName(saleBox)||'نقدي'),warehouseName:whName(saleWh),
     items:cart.map(l=>{const c=lineCalc(l);return{name:l.name,code:l.code,unit:l.unit,price:l.price,qty:l.qty,disc:l.disc||0,total:c.total,note:l.note||'',service:!!l.service,warehouseName:l.service?'':whName(l.wh||saleWh)};}),
     subtotal:cart.reduce((a,l)=>a+lineCalc(l).gross,0),discount:cart.reduce((a,l)=>a+lineCalc(l).disc,0),
     total:invNet(),paid:invPaid(),remaining:invRemaining(),balanceAfter:(cust?(cust.balance||0):0)+invRemaining(),
@@ -2143,7 +2197,7 @@ function waInvoiceCurrent(){
   if(!cart.length){toast('الفاتورة فارغة','err');return;}
   const cust=DB.customers.find(c=>c.id===saleCustomer);
   const preview={no:DB.seq.sale,type:invType,date:new Date().toISOString(),
-    customerId:cust?cust.id:'',customerName:cust?cust.name:'عميل نقدي',warehouseName:whName(saleWh),
+    customerId:cust?cust.id:'',customerName:cust?cust.name:(boxName(saleBox)||'نقدي'),warehouseName:whName(saleWh),
     items:cart.map(l=>{const c=lineCalc(l);return{name:l.name,code:l.code,unit:l.unit,price:l.price,qty:l.qty,disc:l.disc||0,total:c.total,note:l.note||'',service:!!l.service,warehouseName:l.service?'':whName(l.wh||saleWh)};}),
     subtotal:cart.reduce((a,l)=>a+lineCalc(l).gross,0),discount:cart.reduce((a,l)=>a+lineCalc(l).disc,0),
     total:invNet(),paid:invEffPaid(),remaining:invRemaining()};
@@ -2182,7 +2236,7 @@ function invSave(){
   const invWhName=whset.length>1?'متعدّد المخازن':whName(whset[0]||saleWh);
   const payments=invType==='credit'?invPayments.slice():[{amount:Math.min(paid,net),date:todayISO(),note:'نقدي'}];
   const sale={id:editing?editing.id:uid('inv'),no,type:invType,date:editing?editing.date:((val('invDate')||todayISO())+'T'+new Date().toISOString().slice(11)),
-    customerId:cust?cust.id:'',customerName:cust?cust.name:'عميل نقدي',warehouseId:saleWh,warehouseName:invWhName,
+    customerId:cust?cust.id:'',customerName:cust?cust.name:(boxName(saleBox)||'نقدي'),warehouseId:saleWh,warehouseName:invWhName,
     boxId:saleBox,boxName:boxName(saleBox),
     items:cart.map(l=>{const c=lineCalc(l);return{id:l.id,name:l.name,code:l.code,unit:l.unit,price:l.price,qty:l.qty,disc:l.disc||0,total:c.total,service:!!l.service,note:l.note||'',wh:l.service?'':(l.wh||saleWh),warehouseName:l.service?'':whName(l.wh||saleWh)};}),
     subtotal:cart.reduce((a,l)=>a+lineCalc(l).gross,0),discount:cart.reduce((a,l)=>a+lineCalc(l).disc,0),
@@ -2287,7 +2341,19 @@ function invoiceBodyHTML(sale){
       </div>
     </div>`;
 }
+function newPurchase(){if(!CUR_USER)return;invMode='purchase';purType='cash';current='invoice';const p=PAGES.find(x=>x.id==='invoice');if(p){document.getElementById('pageTitle').textContent=p.t;document.getElementById('pageSub').textContent=p.sub;}closeDrawer();window.scrollTo(0,0);render();}
+function newInvoice(){if(!CUR_USER)return;cart=[];invPayments=[];saleCustomer='';invType='cash';_pickedId='';_saleSelIdx=-1;invMode='sale';editSaleId='';invMin=false;go('invoice');}
+function shortcutPrintInvoice(){if(document.getElementById('invPrint')){printEl('invPrint');return;}if(window._curInvoice){showInvoice(window._curInvoice);setTimeout(()=>printEl('invPrint'),150);return;}toast('لا توجد فاتورة لطباعتها','err');}
+function shortcutWaInvoice(){if(window._curInvoice){waInvoice(window._curInvoice);return;}toast('لا توجد فاتورة لإرسالها','err');}
+document.addEventListener('keydown',function(e){
+  if(!CUR_USER)return;
+  const k=e.key;
+  if(k==='F8'){e.preventDefault();newInvoice();}
+  else if(k==='F1'){e.preventDefault();shortcutPrintInvoice();}
+  else if(k==='F2'){e.preventDefault();shortcutWaInvoice();}
+});
 function showInvoice(sale){
+  window._curInvoice=sale;
   modal({title:'فاتورة #'+sale.no,size:'lg',body:invoiceBodyHTML(sale),
     actions:[{label:'طباعة / PDF',primary:true,icon:I.print,fn:()=>{printEl('invPrint');return false;}},
       {label:'إرسال واتساب',icon:I.wa,fn:()=>{waInvoice(sale);return false;}},
@@ -2415,7 +2481,7 @@ function purEffPaid(){return purType==='cash'?purNet():purPaid();}
 function purRemaining(){return Math.max(0,purNet()-purEffPaid());}
 function vPurchase(v){
   if(!DB.suppliers.length){
-    v.innerHTML=`<div class="panel"><div class="empty">${svg(I.truck,42)}<b>لا يوجد موردون بعد</b>أضف مورداً أولاً<div style="margin-top:12px"><button class="btn btn-primary" onclick="go('suppliers')">الذهاب للموردين</button></div></div></div>`;return;
+    v.innerHTML=`<div class="panel"><div class="empty">${svg(I.truck,42)}<b>لا يوجد موردون بعد</b>أضف مورداً أولاً<div style="margin-top:12px"><button class="btn btn-primary" onclick="contactsTab='supp';go('contacts')">الذهاب للموردين</button></div></div></div>`;return;
   }
   if(!purWh||!(DB.warehouses||[]).some(w=>w.id===purWh))purWh=defWh();
   if(!purBox||!boxes().some(b=>b.id===purBox))purBox=defBox();
@@ -2426,9 +2492,11 @@ function vPurchase(v){
     <div class="inv-head">
       <div class="inv-hgrid">
         <div class="field"><label>نوع الفاتورة</label>
-          <select class="inp" id="purType" onchange="purTypeChange()">
-            <option value="cash" ${purType==='cash'?'selected':''}>شراء نقدي</option>
-            <option value="credit" ${purType==='credit'?'selected':''}>شراء آجل</option>
+          <select class="inp" id="invKind" onchange="invKindChange(this.value)">
+            <option value="sale|cash">بيع نقدي</option>
+            <option value="sale|credit">بيع آجل</option>
+            <option value="pur|cash" ${invMode==='purchase'&&purType==='cash'?'selected':''}>شراء نقدي</option>
+            <option value="pur|credit" ${invMode==='purchase'&&purType==='credit'?'selected':''}>شراء آجل</option>
           </select></div>
         <div class="field"><label>رقم الفاتورة</label><input class="inp" value="${nextNo}" disabled></div>
         <div class="field"><label>التاريخ</label><input class="inp" id="purDate" type="date" value="${today}"></div>
@@ -2479,7 +2547,7 @@ function vPurchase(v){
     const note=document.createElement('div');note.className='inv-min-note';note.innerHTML='فاتورة الشراء مصغّرة في نافذة عائمة — اسحبها لأي مكان، واضغط «فتح» للعودة.';v.appendChild(note);}
 }
 function purRefresh(){renderPurItems();renderPurTotals();renderPurSearch();renderPurEntry();updatePurBal();}
-function purTypeChange(){purType=val('purType')||'cash';updatePurBal();}
+function purTypeChange(){purType=val('purType')||purType||'cash';updatePurBal();}
 function updatePurBal(){
   const box=document.getElementById('purBal');if(!box)return;
   if(purType!=='credit'){box.innerHTML=`<span class="inv-chip">نقداً عبر الصندوق</span>`;return;}
@@ -3537,24 +3605,8 @@ function vSettings(v){
     <button class="btn btn-primary" style="margin-top:14px" onclick="saveSettings()">${svg(I.check,16)} حفظ الإعدادات</button></div>
   </div>
 
-  <div class="panel" style="margin-bottom:16px"><div class="panel-h">${svg(I.wallet,18)}<h3>الصناديق وتطبيقات البنكية</h3><div class="spacer"></div><button class="btn btn-sm btn-primary" onclick="boxAdd()">${svg(I.plus,14)} إضافة</button></div>
-    <div style="padding:14px 16px"><div class="set-list">
-      ${boxes().map(bx=>`<div class="set-row"><div><b>${esc(bx.name)}${bx.type==='app'?' <span style="color:var(--muted);font-weight:600;font-size:11px">(تطبيق بنكي)</span>':bx.type==='bank'?' <span style="color:var(--muted);font-weight:600;font-size:11px">(حساب بنكي)</span>':''}</b><span>رصيد افتتاحي: ${money(bx.start||0)} · الحالي: ${money(boxBalance(bx.id))} ${CUR()}</span></div>
-        <div style="display:flex;gap:4px">
-          <button class="btn btn-icon btn-ghost btn-sm" onclick="boxEdit('${bx.id}')">${svg(I.edit,15)}</button>
-          ${boxes().length>1?`<button class="btn btn-icon btn-ghost btn-sm" onclick="boxDel('${bx.id}')">${svg(I.trash,15)}</button>`:''}
-        </div></div>`).join('')}
-    </div></div>
-  </div>
-
-  <div class="panel" style="margin-bottom:16px"><div class="panel-h">${svg(I.box,18)}<h3>الخدمات</h3><div class="spacer"></div><button class="btn btn-sm btn-primary" onclick="svcAdd()">${svg(I.plus,14)} خدمة</button></div>
-    <div style="padding:14px 16px"><div class="set-list">
-      ${(DB.services||[]).length?(DB.services).map(s=>`<div class="set-row"><div><b>${esc(s.name)}</b><span>القيمة الافتراضية: ${money(s.price||0)} ${CUR()}</span></div>
-        <div style="display:flex;gap:4px">
-          <button class="btn btn-icon btn-ghost btn-sm" onclick="svcEdit('${s.id}')">${svg(I.edit,15)}</button>
-          <button class="btn btn-icon btn-ghost btn-sm" onclick="svcDel('${s.id}')">${svg(I.trash,15)}</button>
-        </div></div>`).join(''):'<div class="muted" style="font-size:13px">لا خدمات بعد. أضِف خدمة (شحن، تشغيل، حمل...).</div>'}
-    </div></div>
+  <div class="panel" style="margin-bottom:16px"><div class="panel-h">${svg(I.wallet,18)}<h3>الصناديق وتطبيقات البنكية والخدمات</h3></div>
+    <div style="padding:16px;font-size:13.5px;color:var(--muted)">انتقلت إدارة الصناديق والتطبيقات البنكية والخدمات إلى صفحة مستقلّة: <button class="btn btn-sm btn-primary" onclick="go('accounts')">${svg(I.wallet,14)} فتح «الصناديق وتطبيقات البنكية»</button></div>
   </div>
     <div style="padding:18px"><div class="grid2">
       <div class="field" style="grid-column:1/-1"><label>العنوان</label><input class="inp" id="set_addr" placeholder="المدينة، الشارع..." value="${esc(DB.settings.address||'')}"></div>
@@ -3584,6 +3636,36 @@ function vSettings(v){
     <div style="padding:18px;font-size:14px;line-height:1.9;color:var(--muted)">
       هذه النسخة تعمل وتحفظ البيانات على هذا الجهاز فقط. لتفعيل <b style="color:var(--ink)">المزامنة الفورية بين عدة أجهزة</b> (كمبيوتر + هواتف الموظفين) وتسجيل دخول المستخدمين بالصلاحيات، نربط النظام بقاعدة بيانات سحابية. هذه هي المرحلة التالية في التطوير.
     </div>
+  </div>`;
+}
+let contactsTab='cust';
+function vContacts(v){
+  v.innerHTML=`<div style="display:flex;gap:8px;margin-bottom:14px">
+      <button class="chip ${contactsTab==='cust'?'active':''}" onclick="contactsTab='cust';render()">العملاء (${DB.customers.length})</button>
+      <button class="chip ${contactsTab==='supp'?'active':''}" onclick="contactsTab='supp';render()">الموردون (${(DB.suppliers||[]).length})</button>
+    </div><div id="contactsBody"></div>`;
+  const body=document.getElementById('contactsBody');
+  if(contactsTab==='supp')vSuppliers(body);else vCustomers(body);
+}
+function vAccounts(v){
+  v.innerHTML=`
+  <div class="panel" style="margin-bottom:16px"><div class="panel-h">${svg(I.wallet,18)}<h3>الصناديق وتطبيقات البنكية</h3><div class="spacer"></div><button class="btn btn-sm btn-primary" onclick="boxAdd()">${svg(I.plus,14)} إضافة</button></div>
+    <div style="padding:14px 16px"><div class="set-list">
+      ${boxes().map(bx=>`<div class="set-row"><div><b>${esc(bx.name)}${bx.type==='app'?' <span style="color:var(--muted);font-weight:600;font-size:11px">(تطبيق بنكي)</span>':bx.type==='bank'?' <span style="color:var(--muted);font-weight:600;font-size:11px">(حساب بنكي)</span>':''}</b><span>رصيد افتتاحي: ${money(bx.start||0)} · الحالي: ${money(boxBalance(bx.id))} ${CUR()}</span></div>
+        <div style="display:flex;gap:4px">
+          <button class="btn btn-icon btn-ghost btn-sm" onclick="boxEdit('${bx.id}')">${svg(I.edit,15)}</button>
+          ${boxes().length>1?`<button class="btn btn-icon btn-ghost btn-sm" onclick="boxDel('${bx.id}')">${svg(I.trash,15)}</button>`:''}
+        </div></div>`).join('')}
+    </div></div>
+  </div>
+  <div class="panel"><div class="panel-h">${svg(I.box,18)}<h3>الخدمات</h3><div class="spacer"></div><button class="btn btn-sm btn-primary" onclick="svcAdd()">${svg(I.plus,14)} خدمة</button></div>
+    <div style="padding:14px 16px"><div class="set-list">
+      ${(DB.services||[]).length?(DB.services).map(s=>`<div class="set-row"><div><b>${esc(s.name)}</b><span>القيمة الافتراضية: ${money(s.price||0)} ${CUR()}</span></div>
+        <div style="display:flex;gap:4px">
+          <button class="btn btn-icon btn-ghost btn-sm" onclick="svcEdit('${s.id}')">${svg(I.edit,15)}</button>
+          <button class="btn btn-icon btn-ghost btn-sm" onclick="svcDel('${s.id}')">${svg(I.trash,15)}</button>
+        </div></div>`).join(''):'<div class="muted" style="font-size:13px">لا خدمات بعد. أضِف خدمة (شحن، تشغيل، حمل...).</div>'}
+    </div></div>
   </div>`;
 }
 function boxAdd(){
@@ -3673,19 +3755,46 @@ function resetAll(){
 
 /* ---------- استيراد/تصدير CSV / Excel ---------- */
 function importRows(rows){
-  // rows: array of arrays [name,code,category,price,wholesale,qty,minQty,desc]
-  let added=0;
+  let added=0,updated=0;
   const isHeader=rows.length&&/[a-zA-Zأ-ي]/.test(String(rows[0][0]||''))&&isNaN(parseFloat(rows[0][3]));
   for(let i=isHeader?1:0;i<rows.length;i++){
     const c=rows[i].map(x=>String(x==null?'':x).trim());
     if(!c[0])continue;
-    DB.products.push({id:uid('p'),name:c[0],code:c[1]||'',category:c[2]||DB.categories[0],
-      price:parseFloat(c[3])||0,wholesale:parseFloat(c[4])||0,qty:parseFloat(c[5])||0,minQty:parseFloat(c[6])||5,desc:c[7]||''});
+    const code=c[1]||'',nameN=normAr(c[0]);
+    const category=c[2]||DB.categories[0],price=parseFloat(c[3])||0,wholesale=parseFloat(c[4])||0,qty=parseFloat(c[5])||0,minQty=parseFloat(c[6])||5,desc=c[7]||'';
+    let ex=code?DB.products.find(p=>p.code&&p.code.trim().toLowerCase()===code.toLowerCase()):null;
+    if(!ex)ex=DB.products.find(p=>normAr(p.name)===nameN);
+    if(ex){
+      ex.name=c[0];if(code)ex.code=code;ex.category=category;
+      if(c[3]!=='')ex.price=price;if(c[4]!=='')ex.wholesale=wholesale;if(c[5]!=='')ex.qty=qty;if(c[6]!=='')ex.minQty=minQty;if(desc)ex.desc=desc;
+      cloudPutProduct(ex);updated++;
+    }else{
+      const np={id:uid('p'),name:c[0],code,category,price,wholesale,qty,minQty,desc};
+      DB.products.push(np);cloudPutProduct(np);added++;
+    }
     if(c[2]&&!DB.categories.includes(c[2]))DB.categories.push(c[2]);
-    added++;
   }
-  if(!added){toast('لم يتم العثور على مواد في الملف','err');return;}
-  save();cloudPutMeta();DB.products.slice(-added).forEach(p=>cloudPutProduct(p));toast(`تم استيراد ${added} مادة`,'ok');render();
+  if(!added&&!updated){toast('لم يتم العثور على مواد في الملف','err');return;}
+  save();cloudPutMeta();toast(`تم الاستيراد: ${added} جديدة، ${updated} محدّثة`,'ok');render();
+}
+function findDuplicates(){
+  const map={};
+  DB.products.forEach(p=>{const key=(p.code&&p.code.trim())?('c:'+p.code.trim().toLowerCase()):('n:'+normAr(p.name));(map[key]=map[key]||[]).push(p);});
+  return Object.values(map).filter(g=>g.length>1);
+}
+function dedupeProducts(){
+  const groups=findDuplicates();
+  if(!groups.length){toast('لا توجد مواد مكرّرة 👍','ok');return;}
+  const extra=groups.reduce((a,g)=>a+(g.length-1),0);
+  confirmDlg('دمج المواد المكرّرة؟',`وُجدت ${groups.length} مادة مكرّرة (${extra} نسخة زائدة). سيُحتفظ بنسخة واحدة من كل مادة وتُجمع كمياتها، وتُحذف النسخ الزائدة.`,()=>{
+    let removed=0;
+    groups.forEach(g=>{
+      const keep=g[0];let qty=Number(keep.qty)||0;
+      g.slice(1).forEach(d=>{qty+=Number(d.qty)||0;if(!keep.image&&d.image)keep.image=d.image;cloudDelProduct(d.id);DB.products=DB.products.filter(x=>x.id!==d.id);removed++;});
+      keep.qty=qty;cloudPutProduct(keep);
+    });
+    save();toast(`تم دمج وحذف ${removed} نسخة مكرّرة`,'ok');render();
+  });
 }
 function loadSheetJS(cb){
   if(window.XLSX)return cb(true);
@@ -3851,10 +3960,10 @@ function openImageSearch(ctx){
   _aiCtx=ctx||'store';
   const haveImgs=DB.products.filter(p=>p.image).length;
   modal({title:'البحث بصورة (ذكاء اصطناعي)',size:'lg',body:`
-    <input type="file" id="aiFile" accept="image/*" capture="environment" class="hidden" onchange="aiImagePick(this)">
+    <input type="file" id="aiFile" accept="image/*" class="hidden" onchange="aiImagePick(this)">
     ${haveImgs?`
     <div id="aiPick" style="text-align:center;padding:10px 0 4px">
-      <button class="btn btn-primary" style="padding:12px 24px" onclick="document.getElementById('aiFile').click()">${svg(I.search,17)} التقط صورة المنتج أو اخترها</button>
+      <button class="btn btn-primary" style="padding:12px 24px" onclick="document.getElementById('aiFile').click()">${svg(I.search,17)} اختر صورة من معرض الهاتف أو التقطها</button>
       <p class="muted" style="font-size:13px;margin-top:10px">سيقارن الذكاء الاصطناعي صورتك بصور منتجاتك (${haveImgs} منتج بصورة) ويعرض الأقرب شبهاً.<br>يتطلب اتصال إنترنت عند أول استخدام لتحميل النموذج.</p>
     </div>
     <div id="aiQuery"></div>
@@ -4072,11 +4181,11 @@ function cardCtrl(p,out){
 }
 function renderStoreGrid(){
   const el=document.getElementById('storeGrid');if(!el)return;
-  const q=(document.getElementById('storeQ')?.value||'').trim().toLowerCase();
+  const q=normAr(document.getElementById('storeQ')?.value||'');
   document.getElementById('prodSecTitle').textContent=storeCat?catLabel(storeCat):t('allProducts');
   let list=DB.products.filter(p=>{
     if(storeCat&&p.category!==storeCat)return false;
-    if(q&&!(p.name.toLowerCase().includes(q)||(p.code||'').toLowerCase().includes(q)))return false;
+    if(q){const hay=normAr([p.name,p.nameFr,p.code,p.category,p.desc].join(' '));if(!hay.includes(q))return false;}
     return true;
   });
   if(!list.length){el.innerHTML=`<div class="empty" style="grid-column:1/-1">${svg(I.box,42)}<b>${t('noProducts')}</b></div>`;return;}
