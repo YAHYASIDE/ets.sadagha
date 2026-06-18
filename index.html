@@ -994,6 +994,10 @@ function cloudPutMeta(){
 }
 /* تسجيلات الزبائن من المتجر (مجموعة مستقلة في السحابة) */
 function cloudAddRegistration(reg){ if(!FS)return Promise.reject('no-cloud'); return FS.collection('registrations').doc(String(reg.id)).set(reg); }
+function cloudAddOrder(o){ if(!FS)return Promise.reject('no-cloud'); return FS.collection('orders').doc(String(o.id)).set(o); }
+function cloudFetchOrders(){ if(!FS)return Promise.resolve(null); return FS.collection('orders').get().then(s=>s.docs.map(d=>d.data())); }
+function cloudSetOrder(id,patch){ if(!FS)return Promise.resolve(); return FS.collection('orders').doc(String(id)).set(patch,{merge:true}); }
+function cloudDelOrder(id){ if(!FS)return Promise.resolve(); return FS.collection('orders').doc(String(id)).delete(); }
 function cloudFetchRegistrations(){ if(!FS)return Promise.resolve(null); return FS.collection('registrations').get().then(s=>s.docs.map(d=>d.data())); }
 function cloudSetReg(id,patch){ if(!FS)return Promise.resolve(); return FS.collection('registrations').doc(String(id)).set(patch,{merge:true}); }
 function cloudDelReg(id){ if(!FS)return Promise.resolve(); return FS.collection('registrations').doc(String(id)).delete(); }
@@ -1080,6 +1084,22 @@ function cloudInit(){
       window._regInit=true;
     }, e=>{});
   }catch(e){}
+  /* الطلبات: تحديث حيّ + إشعار */
+  try{
+    FS.collection('orders').onSnapshot(snap=>{
+      const list=snap.docs.map(d=>d.data());
+      DB.orders=list;try{save();}catch(e){}
+      if(current==='orders'){if(typeof renderOrders==='function')renderOrders();}
+      if(typeof updateOrderBadge==='function')updateOrderBadge();
+      const pend=list.filter(o=>(o.status||'pending')==='pending');
+      if(window._ordInit){
+        const newest=pend.length?Math.max.apply(null,pend.map(o=>new Date(o.date||0).getTime())):0;
+        const seen=Number(localStorage.getItem('sadaqa_seen_order')||0);
+        if(pend.length&&newest>seen){try{showInAppNotif('🛒 طلب جديد',pend.length+' طلب بانتظار المراجعة في «الطلبات»');}catch(e){}}
+      }
+      window._ordInit=true;
+    }, e=>{});
+  }catch(e){}
 }
 function uid(p){return p+'_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
 function seed(){
@@ -1132,6 +1152,13 @@ if(!DB.trash)DB.trash=[];
 if(!DB.registrations)DB.registrations=[];
 if(!DB.workers)DB.workers=[];
 if(!DB.workerLogs)DB.workerLogs=[];
+if(!DB.orders)DB.orders=[];
+if(DB.settings.delivery==null)DB.settings.delivery=50;
+(function(){
+  const def=DB.settings.payNumber||'20108565';
+  [['اموالي','app'],['بيم بنك','bank']].forEach(a=>{if(!(DB.boxes||[]).some(b=>(b.name||'').toLowerCase()===a[0].toLowerCase()))DB.boxes.push({id:'boxapp_'+a[0].replace(/\s/g,''),name:a[0],type:a[1],start:0});});
+  (DB.boxes||[]).forEach(b=>{if(b.payNum==null){const n=(b.name||'').toLowerCase();b.payNum=(n.indexOf('orange')>=0||n.indexOf('اورانج')>=0)?'82959141':((b.type==='app'||b.type==='bank')?def:'');}});
+})();
 if(!DB.settings.payNumber)DB.settings.payNumber='20108565';
 if(DB.seq&&!DB.seq.voucher)DB.seq.voucher=1;
 if(!DB.settings.whatsapp)DB.settings.whatsapp='22222227268';
@@ -1148,10 +1175,10 @@ if(!DB.users||!DB.users.length){
 }
 // صلاحيات كل دور (أقسام لوحة الإدارة المسموحة)
 const ROLE_PAGES={
-  'صاحب':['dash','today','store','inventory','warehouses','invoice','sale','purchase','contacts','customers','suppliers','regs','vouchers','expenses','cash','accounts','reports','notify','settings','users'],
-  'مدير':['dash','today','store','inventory','warehouses','invoice','sale','purchase','contacts','customers','suppliers','regs','vouchers','expenses','cash','accounts','reports','notify','settings','users'],
-  'محاسب':['dash','today','contacts','customers','suppliers','regs','vouchers','expenses','cash','accounts','reports'],
-  'مسيّر':['today','store','inventory','warehouses','invoice','sale','purchase'],
+  'صاحب':['dash','today','store','inventory','warehouses','invoice','sale','purchase','contacts','customers','suppliers','regs','orders','vouchers','expenses','cash','accounts','reports','notify','settings','users'],
+  'مدير':['dash','today','store','inventory','warehouses','invoice','sale','purchase','contacts','customers','suppliers','regs','orders','vouchers','expenses','cash','accounts','reports','notify','settings','users'],
+  'محاسب':['dash','today','contacts','customers','suppliers','regs','orders','vouchers','expenses','cash','accounts','reports'],
+  'مسيّر':['today','store','inventory','warehouses','invoice','sale','purchase','orders'],
 };
 let CUR_USER=null;
 function allowedPages(){return CUR_USER?(ROLE_PAGES[CUR_USER.role]||['dash']):[];}
@@ -1354,6 +1381,7 @@ const PAGES=[
   {id:'customers',t:'العملاء',sub:'الأرصدة وكشوف الحسابات',icon:I.people,hide:1},
   {id:'suppliers',t:'الموردون',sub:'المشتريات والمستحقات',icon:I.truck,hide:1},
   {id:'regs',t:'تسجيلات الزبائن',sub:'طلبات تسجيل من المتجر وتأكيدها',icon:I.phone},
+  {id:'orders',t:'الطلبات',sub:'طلبات الزبائن من المتجر وتحويلها لفواتير',icon:I.store},
   {id:'vouchers',t:'سندات القبض والدفع',sub:'إيصالات قبض وصرف لكل الحسابات',icon:I.wallet},
   {id:'expenses',t:'المصروفات والعمال',sub:'المصاريف وأجور العمال وغياباتهم',icon:I.expense},
   {id:'cash',t:'الصندوق',sub:'الوارد والصادر والرصيد',icon:I.wallet},
@@ -1366,8 +1394,27 @@ const PAGES=[
 ];
 let current='dash';
 function pendingRegCount(){return (DB.registrations||[]).filter(r=>!r.verified).length;}
-function navBadge(id){if(id!=='regs')return '';const n=pendingRegCount();return `<span class="reg-badge" style="margin-inline-start:auto;background:#dc2626;color:#fff;border-radius:10px;min-width:18px;text-align:center;padding:1px 6px;font-size:11px;font-weight:800;display:${n>0?'inline-block':'none'}">${n}</span>`;}
+function pendingOrderCount(){return (DB.orders||[]).filter(o=>(o.status||'pending')==='pending').length;}
+function navBadge(id){
+  let n=0,cls='';
+  if(id==='regs'){n=pendingRegCount();cls='reg-badge';}
+  else if(id==='orders'){n=pendingOrderCount();cls='order-badge';}
+  else return '';
+  return `<span class="${cls}" style="margin-inline-start:auto;background:#dc2626;color:#fff;border-radius:10px;min-width:18px;text-align:center;padding:1px 6px;font-size:11px;font-weight:800;display:${n>0?'inline-block':'none'}">${n}</span>`;
+}
 function updateRegBadge(){const n=pendingRegCount();document.querySelectorAll('.reg-badge').forEach(b=>{b.textContent=n;b.style.display=n>0?'inline-block':'none';});}
+function updateOrderBadge(){const n=pendingOrderCount();document.querySelectorAll('.order-badge').forEach(b=>{b.textContent=n;b.style.display=n>0?'inline-block':'none';});if(typeof showOrderAlert==='function')showOrderAlert();}
+function showOrderAlert(){
+  if(!CUR_USER){const ex=document.getElementById('orderAlert');if(ex)ex.remove();return;}
+  const n=pendingOrderCount();
+  let el=document.getElementById('orderAlert');
+  if(n<=0||current==='orders'){if(el)el.remove();return;}
+  if(!el){el=document.createElement('div');el.id='orderAlert';
+    el.onclick=()=>{el.remove();if(typeof go==='function')go('orders');};
+    el.style.cssText='position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:5000;background:linear-gradient(135deg,#16a34a,#22c55e);color:#fff;padding:13px 22px;border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.28);font-weight:800;font-size:14.5px;cursor:pointer;display:flex;align-items:center;gap:10px;max-width:92vw;text-align:center';
+    document.body.appendChild(el);}
+  el.innerHTML=`🛒 لديك ${n} طلب جديد — اضغط للمراجعة والتحويل لفاتورة`;
+}
 function buildNav(){
   const pages=PAGES.filter(p=>p.sep||(can(p.id)&&!p.hide));
   const html=pages.map(p=>p.sep?'<div class="sep"></div>':
@@ -1387,6 +1434,7 @@ const TOOLBAR=[
   {id:'warehouses',t:'المخازن',icon:I.warehouse,c:'#0e7490'},
   {id:'contacts',t:'العملاء والموردون',icon:I.people,c:'#2563eb'},
   {id:'regs',t:'تسجيلات الزبائن',icon:I.phone,c:'#0891b2'},
+  {id:'orders',t:'الطلبات',icon:I.store,c:'#16a34a'},
   {id:'vouchers',t:'السندات',icon:I.wallet,c:'#0d9488'},
   {id:'expenses',t:'المصروفات',icon:I.expense,c:'#dc2626'},
   {id:'cash',t:'الصندوق',icon:I.wallet,c:'#ca8a04'},
@@ -1401,7 +1449,7 @@ function buildToolbar(){
   const items=TOOLBAR.filter(b=>can(b.id));
   bar.innerHTML=`<div class="erp-brand"><div class="logo">ص</div><div><b>مؤسسة الصداقة</b><span>للتجارة العامة</span></div></div>
     <div class="erp-tools">${items.map(b=>`<button class="erpbtn" data-id="${b.id}" onclick="go('${b.id}')" title="${b.t}" style="position:relative">
-      <span class="ei" style="background:${b.c}18;color:${b.c}">${svg(b.icon,20)}</span><small>${b.t}</small>${b.id==='regs'?navBadge('regs').replace('margin-inline-start:auto;','position:absolute;top:2px;inset-inline-end:2px;'):''}</button>`).join('')}</div>`;
+      <span class="ei" style="background:${b.c}18;color:${b.c}">${svg(b.icon,20)}</span><small>${b.t}</small>${(b.id==='regs'||b.id==='orders')?navBadge(b.id).replace('margin-inline-start:auto;','position:absolute;top:2px;inset-inline-end:2px;'):''}</button>`).join('')}</div>`;
 }
 function go(id){
   if(!can(id))id=allowedPages()[0]||'dash';
@@ -1421,7 +1469,7 @@ function closeDrawer(){document.getElementById('drawer').classList.remove('open'
 function render(){
   const v=document.getElementById('view');
   ({dash:vDash,store:vStore,inventory:vInventory,warehouses:vWarehouses,invoice:vInvoice,sale:vSale,today:vToday,purchase:vPurchase,contacts:vContacts,customers:vCustomers,
-    suppliers:vSuppliers,regs:vRegs,vouchers:vVouchers,expenses:vExpenses,cash:vCash,accounts:vAccounts,reports:vReports,notify:vNotify,settings:vSettings,users:vUsers}[current]||vDash)(v);
+    suppliers:vSuppliers,regs:vRegs,orders:vOrders,vouchers:vVouchers,expenses:vExpenses,cash:vCash,accounts:vAccounts,reports:vReports,notify:vNotify,settings:vSettings,users:vUsers}[current]||vDash)(v);
   if(typeof renderMiniInv==='function')renderMiniInv();
   if(typeof renderMiniPur==='function')renderMiniPur();
 }
@@ -3616,12 +3664,87 @@ function vRegs(v){
     <div class="spacer" style="flex:1"></div>
     <button class="btn btn-sm" onclick="regsRefresh()">${svg(I.undo,14)} تحديث</button></div>
     <div style="padding:14px 16px"><p class="muted" style="font-size:12.5px;margin-bottom:10px">
-      عند تسجيل أي زبون من المتجر تصلك منه رسالة واتساب فيها كود التأكيد. تحقّق أن الرسالة وصلت من نفس الرقم ثم اضغط «تأكيد»، أو أرسل له كوداً عبر واتساب ليؤكّد رقمه.</p>
+      عند تسجيل أي زبون من المتجر يظهر هنا. تحقّق منه ثم اضغط «تأكيد» (وأنت داخل بالدخول الآمن) ليصبح موثّقاً ويُضاف للعملاء.</p>
       <div id="regsList">${_regsCache?regsTable(_regsCache):'<div class="muted" style="padding:14px">جارٍ التحميل من السحابة...</div>'}</div>
     </div></div>`;
   regsRefresh();
   try{localStorage.setItem('sadaqa_seen_reg',Date.now());}catch(e){}
 }
+function vOrders(v){
+  v.innerHTML=`<div class="panel"><div class="panel-h">${svg(I.store,18)}<h3>طلبات الزبائن من المتجر</h3>
+    <div class="spacer" style="flex:1"></div>
+    <button class="btn btn-sm" onclick="ordersRefresh()">${svg(I.undo,14)} تحديث</button></div>
+    <div style="padding:14px 16px"><p class="muted" style="font-size:12.5px;margin-bottom:10px">
+      طلبات الزبائن من المتجر. راجع الطلب ثم اضغط «تحويل إلى فاتورة» (وأنت داخل بالدخول الآمن) لإنشاء فاتورة بيع في فواتيرك مع خصم المخزون.</p>
+      <div id="ordersList"><div class="muted" style="padding:14px">جارٍ التحميل من السحابة...</div></div>
+    </div></div>`;
+  ordersRefresh();
+  try{localStorage.setItem('sadaqa_seen_order',Date.now());}catch(e){}
+  const al=document.getElementById('orderAlert');if(al)al.remove();
+  updateOrderBadge();
+}
+function ordersRefresh(){
+  const p=cloudFetchOrders();
+  if(p&&p.then)p.then(list=>{if(list===null)renderOrders(DB.orders||[]);else{DB.orders=list;save();renderOrders(list);}}).catch(()=>renderOrders(DB.orders||[]));
+  else renderOrders(DB.orders||[]);
+}
+function renderOrders(list){
+  list=(list||DB.orders||[]).slice().sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const el=document.getElementById('ordersList');if(!el)return;
+  if(!list.length){el.innerHTML=`<div class="empty" style="padding:30px">${svg(I.store,38)}<b>لا طلبات بعد</b>ستظهر هنا طلبات الزبائن من المتجر</div>`;return;}
+  el.innerHTML=list.map(o=>{
+    const st=o.status||'pending';
+    const stBadge=st==='converted'?'<span class="badge b-ok">تم التحويل لفاتورة</span>':st==='rejected'?'<span class="badge" style="background:#FEE2E2;color:#B91C1C">مرفوض</span>':'<span class="badge" style="background:#FEF3C7;color:#92400E">قيد المراجعة</span>';
+    const payTxt=o.payMode==='cod'?'عند الاستلام':o.payMode==='partial'?('جزئي عبر '+esc(o.payApp||'')+' — مدفوع '+money(o.deposit)+' / باقٍ '+money(o.remaining)):('كامل عبر '+esc(o.payApp||'')+' — '+money(o.deposit));
+    return `<div style="border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap">
+        <div><b>#${o.no} · ${esc(o.name)}</b> ${stBadge}<div class="muted" style="font-size:12px" dir="ltr">+${esc(o.cc||'222')} ${esc(o.phone||'')}</div></div>
+        <div style="text-align:end"><b style="font-size:16px">${money(o.total)} ${CUR()}</b><div class="muted" style="font-size:11px">${fmtDateTime(o.date)}</div></div>
+      </div>
+      <div style="font-size:12.5px;margin-top:8px">${o.items.map(l=>`${esc(l.name)} ×${l.qty}`).join(' · ')}</div>
+      <div class="muted" style="font-size:12px;margin-top:5px">الحمل: ${money(o.delivery)} · الدفع: ${payTxt}${o.addr?(' · '+esc(o.addr)):''}</div>
+      ${o.proof?`<img src="${o.proof}" onclick="imgLightbox('${o.proof}')" style="margin-top:8px;max-height:90px;border-radius:8px;cursor:zoom-in">`:''}
+      ${o.note?`<div class="muted" style="font-size:12px;margin-top:5px">ملاحظة: ${esc(o.note)}</div>`:''}
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">
+        ${st==='pending'?`<button class="btn btn-sm btn-primary" onclick="convertOrder('${o.id}')">${svg(I.check,13)} تحويل إلى فاتورة</button>`:(o.saleId?`<button class="btn btn-sm" onclick="(function(){var s=DB.sales.find(x=>x.id==='${o.saleId}');if(s)showInvoice(s);})()">عرض الفاتورة</button>`:'')}
+        ${o.coords?`<a class="btn btn-sm" href="https://maps.google.com/?q=${o.coords.lat},${o.coords.lng}" target="_blank">📍 الموقع</a>`:''}
+        <button class="btn btn-sm" style="color:#16a34a" onclick="orderWa('${o.id}')">${svg(I.wa,13)} واتساب</button>
+        <button class="btn btn-icon btn-ghost btn-sm" title="حذف" onclick="delOrder('${o.id}')">${svg(I.trash,15)}</button>
+      </div>
+    </div>`;}).join('');
+}
+function convertOrder(id){
+  const o=(DB.orders||[]).find(x=>x.id===id);if(!o)return;
+  confirmDlg('تحويل الطلب إلى فاتورة؟','سيُنشأ بيع جديد، ويُخصم المخزون، وتُسجّل الدفعة في الصندوق.',()=>{
+    const wh='wh_main';
+    const items=o.items.map(l=>{const p=DB.products.find(x=>x.id===l.id);const price=Number(l.price)||0,qty=Number(l.qty)||0;
+      return {id:l.id,name:l.name,code:p?(p.code||''):'',unit:p?(p.unit||'قطعة'):'قطعة',price,qty,disc:0,total:price*qty,wh,warehouseName:whName(wh),cost:p?(p.wholesale||0):0};});
+    if(o.delivery>0)items.push({id:'svc_deliv',name:'الحمل (توصيل)',unit:'خدمة',price:o.delivery,qty:1,disc:0,total:o.delivery,service:true,wh,warehouseName:whName(wh),cost:0});
+    const subtotal=items.reduce((a,i)=>a+i.total,0);const total=subtotal;
+    const paid=o.payMode==='cod'?0:(Number(o.deposit)||0);const remaining=total-paid;
+    let cust=DB.customers.find(c=>digitsOnly(c.phone)===digitsOnly(o.phone)&&(c.cc||'222')===(o.cc||'222'));
+    if(!cust&&remaining>0){cust={id:uid('c'),name:o.name,cc:o.cc||'222',phone:o.phone,phone2:'',fax:'',address:o.addr||'',image:'',balance:0};DB.customers.push(cust);}
+    const type=remaining>0?'credit':'cash';
+    const boxId=o.payAppId||defBox();
+    if(DB.seq&&!DB.seq.sale)DB.seq.sale=1;const no=DB.seq.sale;DB.seq.sale++;
+    const profit=items.reduce((a,i)=>a+(i.service?0:((i.price-(i.cost||0))*i.qty)),0);
+    const sale={id:uid('inv'),no,type,date:new Date().toISOString(),
+      customerId:cust?cust.id:'',customerName:cust?cust.name:o.name,warehouseId:wh,warehouseName:whName(wh),boxId,boxName:boxName(boxId),
+      items,subtotal,discount:0,total,paid,remaining,profit,
+      payments:paid>0?[{amount:paid,date:todayISO(),note:'دفعة طلب #'+o.no+(o.payApp?(' عبر '+o.payApp):''),box:boxId,boxName:boxName(boxId)}]:[],
+      source:'order',orderId:o.id};
+    items.forEach(it=>{if(it.service)return;const p=DB.products.find(x=>x.id===it.id);if(p){p.qty=(Number(p.qty)||0)-it.qty;if(!p.stock)p.stock={};p.stock[wh]=(Number(p.stock[wh])||0)-it.qty;cloudPutProduct(p);}});
+    DB.sales.push(sale);
+    if(cust&&remaining>0)cust.balance=(Number(cust.balance)||0)+remaining;
+    if(paid>0)addCash('in',paid,'دفعة طلب #'+o.no,sale.id,boxId);
+    o.status='converted';o.saleId=sale.id;cloudSetOrder(o.id,{status:'converted',saleId:sale.id}).catch(()=>{});
+    save();updateOrderBadge();toast('تم تحويل الطلب إلى فاتورة #'+no,'ok');
+    if(current==='orders')renderOrders();
+    showInvoice(sale);
+  });
+}
+function delOrder(id){confirmDlg('حذف الطلب؟','سيُحذف الطلب نهائياً.',()=>{DB.orders=(DB.orders||[]).filter(x=>x.id!==id);cloudDelOrder(id).catch(()=>{});save();updateOrderBadge();renderOrders();toast('تم الحذف','ok');});}
+function orderWa(id){const o=(DB.orders||[]).find(x=>x.id===id);if(!o)return;waOpen(waNum(o.cc,o.phone),'مرحباً '+o.name+'، بخصوص طلبك #'+o.no+' في '+(DB.settings.name||'مؤسسة الصداقة')+'.');}
 function regsRefresh(){
   const fill=list=>{_regsCache=(list||[]).slice();const el=document.getElementById('regsList');if(el)el.innerHTML=regsTable(_regsCache);if(typeof updateRegBadge==='function')updateRegBadge();};
   const p=cloudFetchRegistrations();
@@ -3728,6 +3851,7 @@ function vSettings(v){
       <div class="field"><label>العلامات التجارية (افصل بفاصلة)</label><input class="inp" id="set_brands" value="${esc((DB.settings.brands||[]).join('، '))}"></div>
       <div class="field"><label>رمز الدخول السريع (مدير)</label><input class="inp" id="set_pin" inputmode="numeric" placeholder="مثال: 1234" value="${esc(DB.settings.quickPin||'')}"></div>
       <div class="field"><label>رقم الدفع الموحّد (تطبيقات الدفع)</label><input class="inp" id="set_paynum" inputmode="numeric" placeholder="مثال: 20108565" value="${esc(DB.settings.payNumber||'20108565')}"></div>
+      <div class="field"><label>رسوم الحمل / التوصيل لكل طلب</label><input class="inp" id="set_delivery" type="number" step="any" value="${DB.settings.delivery!=null?DB.settings.delivery:50}"></div>
       <div class="field" style="grid-column:1/-1"><label>رابط صورة خلفية الواجهة (اختياري)</label><input class="inp" id="set_hero" placeholder="https://..." value="${esc(DB.settings.heroImage||'')}"></div>
       <div class="field" style="grid-column:1/-1"><label>معلومات عنا (تظهر في القائمة)</label><textarea class="inp" id="set_about" style="min-height:80px">${esc(DB.settings.about||'')}</textarea></div>
       <div class="field" style="grid-column:1/-1"><label>الشروط والاستخدام</label><textarea class="inp" id="set_terms" style="min-height:80px">${esc(DB.settings.terms||'')}</textarea></div>
@@ -3839,6 +3963,7 @@ function saveSettings(){
   DB.settings.brands=val('set_brands').split(/[،,]/).map(s=>s.trim()).filter(Boolean);
   const _pin=document.getElementById('set_pin');if(_pin)DB.settings.quickPin=_pin.value.trim();
   const _pn=document.getElementById('set_paynum');if(_pn)DB.settings.payNumber=_pn.value.trim()||'20108565';
+  const _dl=document.getElementById('set_delivery');if(_dl)DB.settings.delivery=parseFloat(_dl.value)||0;
   DB.settings.heroImage=val('set_hero').trim();
   DB.settings.about=val('set_about').trim();
   DB.settings.terms=val('set_terms').trim();
@@ -4200,8 +4325,8 @@ let CART=[];
 const CAT_ICONS={'مواد البناء':I.brick,'الكهرباء':I.bolt,'السباكة':I.pipe,'الأدوات اليدوية':I.wrench,'المعدات':I.drill,'الزراعة':I.plant,'الدهانات':I.roller,'مستلزمات المنازل':I.house2,'الحديد':I.rebar,'الصين':I.globe,'تحويل':I.transfer};
 const CAT_FR={'مواد البناء':'Matériaux de construction','الكهرباء':'Électricité','السباكة':'Plomberie','الأدوات اليدوية':'Outils à main','المعدات':'Équipement','الزراعة':'Agriculture','الدهانات':'Peintures','مستلزمات المنازل':'Maison','الحديد':'Fer','الصين':'Chine','تحويل':'Transfert'};
 const L={
- ar:{brand:'مؤسسة الصداقة',searchPh:'ابحث عن منتج أو كود...',search:'بحث',qaCats:'تصفّح الأقسام',qaCatsSub:'كل المنتجات',qaTop:'الأكثر مبيعاً',qaTopSub:'أفضل العروض',qaWa:'طلب عبر واتساب',qaWaSub:'تواصل سريع',secCats:'الأقسام',seeAll:'عرض الكل ›',secDeals:'أفضل العروض',more:'المزيد ›',allProducts:'كل المنتجات',navHome:'الرئيسية',navCats:'الأقسام',navCart:'السلة',navAccount:'حساب',navWa:'واتساب',details:'تفاصيل المنتج',quantity:'الكمية',addCart:'أضف للسلة',noDesc:'لا يوجد وصف لهذا المنتج.',inStock:'متوفر',tagNew:'جديد',tagTop:'الأكثر مبيعاً',tagLimited:'كمية محدودة',favorites:'المفضّلة',favEmpty:'لا توجد منتجات مفضّلة بعد',darkMode:'الوضع الليلي',darkOn:'تم تفعيل الوضع الليلي',darkOff:'تم إيقاف الوضع الليلي',related:'منتجات مشابهة',rights:'جميع الحقوق محفوظة',whyUs:'لماذا مؤسسة الصداقة؟',tQuality:'جودة مضمونة',tQualitySub:'بضاعة أصلية',tSupport:'دعم سريع',tSupportSub:'عبر واتساب',tPrice:'أسعار منافسة',tPriceSub:'وأسعار الجملة',tTrust:'خبرة وثقة',tTrustSub:'سنوات في السوق',payTitle:'طرق الدفع المتاحة',recoTitle:'توصيات لك',checkoutTitle:'إتمام الطلب',coName:'الاسم',coPhone:'رقم الهاتف',coAddr:'العنوان',coPay:'طريقة الدفع',coPayDef:'عند الطلب',coNote:'ملاحظة',coLoc:'موقعك للتوصيل',coLocBtn:'تحديد موقعي تلقائياً',coLocOk:'تم تحديد موقعك',coLocWait:'جارٍ تحديد الموقع...',coLocErr:'تعذّر تحديد الموقع — اكتب العنوان يدوياً',coView:'عرض على الخريطة',coProof:'إثبات الدفع (صورة)',coProofBtn:'إرفاق صورة الدفع',coSend:'إرسال الطلب عبر واتساب',coNeed:'أدخل الاسم ورقم الهاتف',coCustomer:'الزبون',coItems:'المنتجات',coLocLabel:'الموقع',coProofNote:'(صورة الدفع مرفقة مع الطلب)',coReady:'تم تجهيز الطلب — أكمل الإرسال في واتساب',hello:'مرحباً',helloGuest:'أهلاً بك في مؤسسة الصداقة',yourName:'اسمك',nameHint:'أدخل اسمك ليظهر ترحيب خاص بك.',namePh:'اكتب اسمك هنا',save:'حفظ',off:'خصم',all:'الكل',out:'نفد',noProducts:'لا توجد منتجات',bestPrice:'أفضل سعر',addedCart:'أُضيف إلى السلة',cartTitle:'🛒 سلة المشتريات',cartEmpty:'سلتك فارغة',cartEmptySub:'تصفّح المنتجات وأضف ما تحتاجه',total:'الإجمالي',checkoutWa:'إتمام الطلب عبر واتساب',clearCart:'تفريغ السلة',menuGuest:'زائر',mOrders:'طلباتي',mAbout:'معلومات عنا',mTerms:'الشروط والاستخدام',mSupport:'فريق الدعم',mAdmin:'دخول كمدير',voiceNo:'البحث الصوتي غير مدعوم في هذا المتصفح',listening:'جارٍ الاستماع...',orderMsg:'طلب جديد — مؤسسة الصداقة',orderTotal:'الإجمالي',waNotSet:'لم يُضبط رقم واتساب بعد',aboutDef:'مؤسسة الصداقة للتجارة العامة — واحدة من أبرز المؤسسات في مجال التجارة العامة في المنطقة. نوفّر تشكيلة واسعة من المواد والمنتجات بأسعار منافسة وجودة عالية.',termsDef:'• الأسعار قابلة للتغيير حسب توفّر المواد.\n• الطلبات تُؤكَّد عبر واتساب قبل التسليم.\n• يُرجى التأكد من المنتجات عند الاستلام.\n• للاستفسار تواصل مع فريق الدعم.',contactWa:'تواصل عبر واتساب',close:'إغلاق',ok:'موافق'},
- fr:{brand:'ETS SADAGA',searchPh:'Rechercher un produit...',search:'Chercher',qaCats:'Catégories',qaCatsSub:'Tous les produits',qaTop:'Meilleures ventes',qaTopSub:'Offres',qaWa:'Commander via WhatsApp',qaWaSub:'Contact rapide',secCats:'Catégories',seeAll:'Voir tout ›',secDeals:'Meilleures offres',more:'Plus ›',allProducts:'Tous les produits',navHome:'Accueil',navCats:'Catégories',navCart:'Panier',navAccount:'Compte',navWa:'WhatsApp',details:'Détails du produit',quantity:'Quantité',addCart:'Ajouter au panier',noDesc:'Aucune description pour ce produit.',inStock:'En stock',tagNew:'Nouveau',tagTop:'Top vente',tagLimited:'Stock limité',favorites:'Favoris',favEmpty:'Aucun favori pour le moment',darkMode:'Mode sombre',darkOn:'Mode sombre activé',darkOff:'Mode sombre désactivé',related:'Produits similaires',rights:'Tous droits réservés',whyUs:'Pourquoi ETS SADAGA ?',tQuality:'Qualité garantie',tQualitySub:'Produits authentiques',tSupport:'Support rapide',tSupportSub:'via WhatsApp',tPrice:'Prix compétitifs',tPriceSub:'et prix de gros',tTrust:'Confiance & expérience',tTrustSub:'années sur le marché',payTitle:'Moyens de paiement',recoTitle:'Recommandations',checkoutTitle:'Finaliser la commande',coName:'Nom',coPhone:'Téléphone',coAddr:'Adresse',coPay:'Mode de paiement',coPayDef:'À la commande',coNote:'Note',coLoc:'Votre localisation',coLocBtn:'Me localiser automatiquement',coLocOk:'Localisation détectée',coLocWait:'Localisation en cours...',coLocErr:'Localisation indisponible — saisissez l\'adresse',coView:'Voir sur la carte',coProof:'Preuve de paiement (image)',coProofBtn:'Joindre la preuve',coSend:'Envoyer via WhatsApp',coNeed:'Entrez le nom et le téléphone',coCustomer:'Client',coItems:'Produits',coLocLabel:'Localisation',coProofNote:'(Preuve de paiement jointe)',coReady:'Commande prête — terminez l\'envoi sur WhatsApp',hello:'Bonjour',helloGuest:'Bienvenue chez ETS SADAGA',yourName:'Votre nom',nameHint:'Entrez votre nom pour un accueil personnalisé.',namePh:'Écrivez votre nom ici',save:'Enregistrer',off:'remise',all:'Tout',out:'Rupture',noProducts:'Aucun produit',bestPrice:'Meilleur prix',addedCart:'Ajouté au panier',cartTitle:'🛒 Panier',cartEmpty:'Votre panier est vide',cartEmptySub:'Parcourez les produits et ajoutez ce qu\'il vous faut',total:'Total',checkoutWa:'Commander via WhatsApp',clearCart:'Vider le panier',menuGuest:'Visiteur',mOrders:'Mes commandes',mAbout:'À propos',mTerms:'Conditions d\'utilisation',mSupport:'Support',mAdmin:'Espace admin',voiceNo:'Recherche vocale non supportée sur ce navigateur',listening:'À l\'écoute...',orderMsg:'Nouvelle commande — ETS SADAGA',orderTotal:'Total',waNotSet:'Numéro WhatsApp non configuré',aboutDef:'ETS SADAGA pour le commerce général — l\'une des principales entreprises du commerce général dans la région. Nous offrons une large gamme de produits à des prix compétitifs et de haute qualité.',termsDef:'• Les prix peuvent varier selon la disponibilité.\n• Les commandes sont confirmées via WhatsApp avant livraison.\n• Veuillez vérifier les produits à la réception.\n• Pour toute question, contactez le support.',contactWa:'Contacter via WhatsApp',close:'Fermer',ok:'OK'}
+ ar:{brand:'مؤسسة الصداقة',searchPh:'ابحث عن منتج أو كود...',search:'بحث',qaCats:'تصفّح الأقسام',qaCatsSub:'كل المنتجات',qaTop:'الأكثر مبيعاً',qaTopSub:'أفضل العروض',qaWa:'طلب عبر واتساب',qaWaSub:'تواصل سريع',secCats:'الأقسام',seeAll:'عرض الكل ›',secDeals:'أفضل العروض',more:'المزيد ›',allProducts:'كل المنتجات',navHome:'الرئيسية',navCats:'الأقسام',navCart:'السلة',navAccount:'حساب',navWa:'واتساب',details:'تفاصيل المنتج',quantity:'الكمية',addCart:'أضف للسلة',noDesc:'لا يوجد وصف لهذا المنتج.',inStock:'متوفر',tagNew:'جديد',tagTop:'الأكثر مبيعاً',tagLimited:'كمية محدودة',favorites:'المفضّلة',favEmpty:'لا توجد منتجات مفضّلة بعد',darkMode:'الوضع الليلي',darkOn:'تم تفعيل الوضع الليلي',darkOff:'تم إيقاف الوضع الليلي',related:'منتجات مشابهة',rights:'جميع الحقوق محفوظة',whyUs:'لماذا مؤسسة الصداقة؟',tQuality:'جودة مضمونة',tQualitySub:'بضاعة أصلية',tSupport:'دعم سريع',tSupportSub:'عبر واتساب',tPrice:'أسعار منافسة',tPriceSub:'وأسعار الجملة',tTrust:'خبرة وثقة',tTrustSub:'سنوات في السوق',payTitle:'طرق الدفع المتاحة',recoTitle:'توصيات لك',checkoutTitle:'إتمام الطلب',coName:'الاسم',coPhone:'رقم الهاتف',coAddr:'العنوان',coPay:'طريقة الدفع',coPayDef:'عند الطلب',coNote:'ملاحظة',coLoc:'موقعك للتوصيل',coLocBtn:'تحديد موقعي تلقائياً',coLocOk:'تم تحديد موقعك',coLocWait:'جارٍ تحديد الموقع...',coLocErr:'تعذّر تحديد الموقع — اكتب العنوان يدوياً',coView:'عرض على الخريطة',coProof:'إثبات الدفع (صورة)',coProofBtn:'إرفاق صورة الدفع',coSend:'إرسال الطلب عبر واتساب',coNeed:'أدخل الاسم ورقم الهاتف',coCustomer:'الزبون',coItems:'المنتجات',coLocLabel:'الموقع',coProofNote:'(صورة الدفع مرفقة مع الطلب)',coReady:'تم تجهيز الطلب — أكمل الإرسال في واتساب',hello:'مرحباً',helloGuest:'أهلاً بك في مؤسسة الصداقة',yourName:'اسمك',nameHint:'أدخل اسمك ليظهر ترحيب خاص بك.',namePh:'اكتب اسمك هنا',save:'حفظ',off:'خصم',all:'الكل',out:'نفد',noProducts:'لا توجد منتجات',bestPrice:'أفضل سعر',addedCart:'أُضيف إلى السلة',cartTitle:'🛒 سلة المشتريات',cartEmpty:'سلتك فارغة',cartEmptySub:'تصفّح المنتجات وأضف ما تحتاجه',total:'الإجمالي',checkoutWa:'إتمام الطلب والدفع',clearCart:'تفريغ السلة',menuGuest:'زائر',mOrders:'طلباتي',mAbout:'معلومات عنا',mTerms:'الشروط والاستخدام',mSupport:'فريق الدعم',mAdmin:'دخول كمدير',voiceNo:'البحث الصوتي غير مدعوم في هذا المتصفح',listening:'جارٍ الاستماع...',orderMsg:'طلب جديد — مؤسسة الصداقة',orderTotal:'الإجمالي',waNotSet:'لم يُضبط رقم واتساب بعد',aboutDef:'مؤسسة الصداقة للتجارة العامة — واحدة من أبرز المؤسسات في مجال التجارة العامة في المنطقة. نوفّر تشكيلة واسعة من المواد والمنتجات بأسعار منافسة وجودة عالية.',termsDef:'• الأسعار قابلة للتغيير حسب توفّر المواد.\n• الطلبات تُؤكَّد عبر واتساب قبل التسليم.\n• يُرجى التأكد من المنتجات عند الاستلام.\n• للاستفسار تواصل مع فريق الدعم.',contactWa:'تواصل عبر واتساب',close:'إغلاق',ok:'موافق'},
+ fr:{brand:'ETS SADAGA',searchPh:'Rechercher un produit...',search:'Chercher',qaCats:'Catégories',qaCatsSub:'Tous les produits',qaTop:'Meilleures ventes',qaTopSub:'Offres',qaWa:'Commander via WhatsApp',qaWaSub:'Contact rapide',secCats:'Catégories',seeAll:'Voir tout ›',secDeals:'Meilleures offres',more:'Plus ›',allProducts:'Tous les produits',navHome:'Accueil',navCats:'Catégories',navCart:'Panier',navAccount:'Compte',navWa:'WhatsApp',details:'Détails du produit',quantity:'Quantité',addCart:'Ajouter au panier',noDesc:'Aucune description pour ce produit.',inStock:'En stock',tagNew:'Nouveau',tagTop:'Top vente',tagLimited:'Stock limité',favorites:'Favoris',favEmpty:'Aucun favori pour le moment',darkMode:'Mode sombre',darkOn:'Mode sombre activé',darkOff:'Mode sombre désactivé',related:'Produits similaires',rights:'Tous droits réservés',whyUs:'Pourquoi ETS SADAGA ?',tQuality:'Qualité garantie',tQualitySub:'Produits authentiques',tSupport:'Support rapide',tSupportSub:'via WhatsApp',tPrice:'Prix compétitifs',tPriceSub:'et prix de gros',tTrust:'Confiance & expérience',tTrustSub:'années sur le marché',payTitle:'Moyens de paiement',recoTitle:'Recommandations',checkoutTitle:'Finaliser la commande',coName:'Nom',coPhone:'Téléphone',coAddr:'Adresse',coPay:'Mode de paiement',coPayDef:'À la commande',coNote:'Note',coLoc:'Votre localisation',coLocBtn:'Me localiser automatiquement',coLocOk:'Localisation détectée',coLocWait:'Localisation en cours...',coLocErr:'Localisation indisponible — saisissez l\'adresse',coView:'Voir sur la carte',coProof:'Preuve de paiement (image)',coProofBtn:'Joindre la preuve',coSend:'Envoyer via WhatsApp',coNeed:'Entrez le nom et le téléphone',coCustomer:'Client',coItems:'Produits',coLocLabel:'Localisation',coProofNote:'(Preuve de paiement jointe)',coReady:'Commande prête — terminez l\'envoi sur WhatsApp',hello:'Bonjour',helloGuest:'Bienvenue chez ETS SADAGA',yourName:'Votre nom',nameHint:'Entrez votre nom pour un accueil personnalisé.',namePh:'Écrivez votre nom ici',save:'Enregistrer',off:'remise',all:'Tout',out:'Rupture',noProducts:'Aucun produit',bestPrice:'Meilleur prix',addedCart:'Ajouté au panier',cartTitle:'🛒 Panier',cartEmpty:'Votre panier est vide',cartEmptySub:'Parcourez les produits et ajoutez ce qu\'il vous faut',total:'Total',checkoutWa:'Finaliser la commande',clearCart:'Vider le panier',menuGuest:'Visiteur',mOrders:'Mes commandes',mAbout:'À propos',mTerms:'Conditions d\'utilisation',mSupport:'Support',mAdmin:'Espace admin',voiceNo:'Recherche vocale non supportée sur ce navigateur',listening:'À l\'écoute...',orderMsg:'Nouvelle commande — ETS SADAGA',orderTotal:'Total',waNotSet:'Numéro WhatsApp non configuré',aboutDef:'ETS SADAGA pour le commerce général — l\'une des principales entreprises du commerce général dans la région. Nous offrons une large gamme de produits à des prix compétitifs et de haute qualité.',termsDef:'• Les prix peuvent varier selon la disponibilité.\n• Les commandes sont confirmées via WhatsApp avant livraison.\n• Veuillez vérifier les produits à la réception.\n• Pour toute question, contactez le support.',contactWa:'Contacter via WhatsApp',close:'Fermer',ok:'OK'}
 };
 let LANG=DB.settings.lang||'ar';
 function t(k){return (L[LANG]&&L[LANG][k])||L.ar[k]||k;}
@@ -4490,14 +4615,14 @@ function renderStoreCart(){
   foot.innerHTML=`
     <div style="display:flex;justify-content:space-between;font-size:18px;font-weight:800;margin-bottom:14px">
       <span>${t('total')}</span><span class="t-num">${m(total)}</span></div>
-    <button class="store-cta" style="background:#25D366" onclick="checkoutWhatsApp()">${t('checkoutWa')}</button>
+    <button class="store-cta" style="background:linear-gradient(135deg,var(--primary),#3b82f6);font-size:16.5px;padding:15px" onclick="checkoutWhatsApp()">🛒 إتمام الطلب والدفع</button>
     <button class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:8px" onclick="CART=[];saveCart();renderStoreCart();updateCartBadge();renderStoreGrid();renderDeals()">${t('clearCart')}</button>`;
 }
 function cartStoreQty(i,d){const l=CART[i];l.qty+=d;if(l.qty<=0)CART.splice(i,1);saveCart();renderStoreCart();updateCartBadge();renderStoreGrid();renderDeals();}
 function cartSetQty(i,v){const l=CART[i];if(!l)return;let n=parseInt(String(v).replace(/[^0-9]/g,''),10);if(!n||n<1){CART.splice(i,1);}else l.qty=n;saveCart();renderStoreCart();updateCartBadge();renderStoreGrid();renderDeals();}
 
 /* ---- إتمام الطلب (نموذج البيع) ---- */
-let _coords=null,_payProof=null;
+let _coords=null,_payProof=null,_payMode='cod',_payApp='';
 function checkoutWhatsApp(){
   if(!CART.length)return;
   const num=(DB.settings.whatsapp||'').replace(/[^0-9]/g,'');
@@ -4507,29 +4632,26 @@ function checkoutWhatsApp(){
 function openCheckout(num){
   _coords=null;_payProof=null;
   const v=getVisitor()||{};
-  const pays=(DB.settings.payments||[]).filter(Boolean);
   const total=CART.reduce((a,l)=>a+l.price*l.qty,0);
   modal({title:t('checkoutTitle'),size:'lg',body:`
     <div style="background:var(--primary-soft);color:var(--primary-d);border-radius:12px;padding:11px 14px;margin-bottom:14px;display:flex;justify-content:space-between;font-weight:800;font-size:15px">
       <span>${t('total')}</span><span>${money(total)} ${CUR()}</span></div>
     <div class="grid2">
-      <div class="field"><label>${t('coName')} *</label><input class="inp" id="co_name" value="${esc(v.name||DB.settings.guestName||'')}"></div>
+      <div class="field"><label>${t('coName')} *</label><input class="inp" id="co_name" value="${esc(v.name||DB.settings.guestName||'')}" ${v.name?'readonly style="background:var(--surface-2,#f1f5f9)"':''}></div>
       <div class="field"><label>${t('coPhone')} *</label>
         <div style="display:flex;gap:6px"><select class="inp" id="co_cc" style="max-width:120px">${ccOptions(v.cc||'222')}</select>
         <input class="inp" id="co_phone" type="tel" inputmode="tel" placeholder="رقم الهاتف" value="${esc(v.phone||'')}" style="flex:1"></div>
       </div>
     </div>
-    <div class="field"><label>${t('coAddr')}</label><input class="inp" id="co_addr"></div>
-    <div class="field"><label>${t('coPay')}</label><select class="inp" id="co_pay">${pays.length?pays.map(p=>`<option>${esc(p)}</option>`).join(''):`<option>${t('coPayDef')}</option>`}</select></div>
+    <div class="field"><label>${t('coAddr')}</label><input class="inp" id="co_addr" placeholder="مكان التوصيل"></div>
     <div class="field"><label>${t('coLoc')}</label>
       <button type="button" class="btn" id="co_locBtn" style="width:100%;justify-content:center" onclick="getCheckoutLocation()">${svg(I.store,16)} <span id="co_locTxt">${t('coLocBtn')}</span></button>
       <div id="co_locMsg" style="font-size:12.5px;margin-top:6px;color:var(--muted)"></div>
     </div>
-    <div class="field"><label>${t('coNote')}</label><textarea class="inp" id="co_note" style="min-height:60px"></textarea></div>
-  `,actions:[
-    {label:'متابعة ›',primary:true,fn:()=>submitCheckout(num,total)},
-    {label:t('close'),fn:()=>true}
-  ]});
+    <div class="field"><label>${t('coNote')}</label><textarea class="inp" id="co_note" style="min-height:55px"></textarea></div>
+    <input type="hidden" id="co_pay" value="">
+    <button class="store-cta" style="background:linear-gradient(135deg,#16a34a,#22c55e);font-size:17px;padding:15px;margin-top:6px" onclick="submitCheckout('${num}',${total})">متابعة للدفع ›</button>
+  `,actions:[{label:t('close'),fn:()=>true}]});
   setTimeout(getCheckoutLocation,300);
 }
 function getCheckoutLocation(){
@@ -4565,73 +4687,109 @@ function copyText(txt){txt=String(txt);const done=()=>toast('تم النسخ ✓
   if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(txt).then(done).catch(()=>fallbackCopy(txt,done));}
   else fallbackCopy(txt,done);}
 function fallbackCopy(txt,cb){const ta=document.createElement('textarea');ta.value=txt;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.focus();ta.select();try{document.execCommand('copy');cb&&cb();}catch(e){}ta.remove();}
+function payApps(){return boxes().filter(b=>b.type==='app'||b.type==='bank');}
+function deliveryFee(){return Number(DB.settings.delivery)||0;}
 function openPaymentStep(ctx){
-  _payProof=null;
-  const payNum=DB.settings.payNumber||'20108565';
-  const amt=ctx.total;
-  const cod=/استلام|عند الطلب|نقد|cash|livraison|réception/i.test(ctx.pay||'');
+  _payProof=null;_payMode='full';
+  _payApp=(payApps().find(b=>/bankily|بنكيلي/i.test(b.name))||payApps()[0]||{}).id||'';
+  ctx.delivery=deliveryFee();
+  ctx.itemsTotal=CART.reduce((a,l)=>a+l.price*l.qty,0);
+  ctx.grandTotal=ctx.itemsTotal+ctx.delivery;
+  window._coCtx=ctx;renderPaymentStep(ctx);
+}
+function setPayMode(m){_payMode=m;if(m==='cod')_payApp='';renderPaymentStep(window._coCtx);}
+function setPayApp(id){_payApp=id;renderPaymentStep(window._coCtx);}
+function renderPaymentStep(ctx){
+  const apps=payApps();const appBox=apps.find(b=>b.id===_payApp);
   const summary=`
-    <div style="border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-bottom:14px">
+    <div style="border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-bottom:12px">
       <div style="background:var(--primary);color:#fff;padding:9px 14px;font-weight:800;font-size:14px">🧾 ملخّص طلبك (${esc(ctx.name)})</div>
       <div style="padding:8px 14px">
-        ${CART.map(l=>`<div style="display:flex;justify-content:space-between;font-size:13px;padding:5px 0;border-bottom:1px dashed var(--line)"><span>${esc(l.name)} × ${l.qty}</span><b>${money(l.price*l.qty)} ${CUR()}</b></div>`).join('')}
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px">
-          <span style="font-weight:800;font-size:14px">المبلغ المطلوب</span>
-          <span style="display:flex;align-items:center;gap:8px"><b style="font-size:18px;color:var(--primary-d)">${money(amt)} ${CUR()}</b>
-          <button class="btn btn-xs" onclick="copyText('${amt}')">نسخ</button></span>
-        </div>
+        ${CART.map(l=>`<div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0;border-bottom:1px dashed var(--line)"><span>${esc(l.name)} × ${l.qty}</span><b>${money(l.price*l.qty)} ${CUR()}</b></div>`).join('')}
+        <div style="display:flex;justify-content:space-between;font-size:13px;padding:6px 0;color:var(--muted)"><span>الحمل (التوصيل)</span><b>${money(ctx.delivery)} ${CUR()}</b></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px">
+          <span style="font-weight:800;font-size:14px">الإجمالي المطلوب</span>
+          <b style="font-size:18px;color:var(--primary-d)">${money(ctx.grandTotal)} ${CUR()}</b></div>
       </div>
     </div>`;
-  const body = cod ? `${summary}
-    <div style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:14px;padding:14px;text-align:center;color:#14532D">
-      <div style="font-size:30px;line-height:1">💵</div>
-      <div style="font-weight:800;font-size:15px;margin-top:6px">الدفع نقداً عند الاستلام</div>
-      <div style="font-size:12.5px;margin-top:5px">ستدفع المبلغ كاملاً عند استلام طلبك. اضغط «إرسال الطلب» لإرساله إلينا عبر واتساب.</div>
-    </div>` : `${summary}
-    <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:14px;padding:14px;margin-bottom:14px;text-align:center">
-      <div style="font-size:13px;color:#1E3A8A;font-weight:700;margin-bottom:6px">💳 حوّل المبلغ عبر تطبيقات الدفع إلى الرقم الموحّد:</div>
-      <div style="font-size:25px;font-weight:800;letter-spacing:1px;direction:ltr;color:#0f172a">${esc(payNum)}</div>
-      <div style="display:flex;gap:8px;justify-content:center;margin-top:10px;flex-wrap:wrap">
-        <button class="btn btn-sm btn-primary" onclick="copyText('${esc(payNum)}')">📋 نسخ الرقم</button>
-        <button class="btn btn-sm" onclick="copyText('${amt}')">نسخ المبلغ</button>
-      </div>
-      <div style="font-size:11.5px;margin-top:9px;color:#475569;font-weight:600">Bankily · Masrvi · Sedad · Amanty · BimBank · Click</div>
-    </div>
-    <div class="field"><label>إثبات الدفع (صورة التحويل)</label>
-      <div id="co_proofPrev" onclick="document.getElementById('co_proof').click()" style="height:96px;border:1px dashed var(--line);border-radius:12px;display:grid;place-items:center;color:var(--ink);font-size:12.5px;cursor:pointer;background:var(--surface-2,#f1f5f9) center/cover no-repeat">${svg(I.upload,18)} <span style="margin-inline-start:6px">إرفاق صورة إثبات الدفع</span></div>
-      <input type="file" id="co_proof" accept="image/*" class="hidden" onchange="pickPayProof(this)">
-    </div>
-    <p class="muted" style="font-size:12px">انسخ الرقم وحوّل المبلغ من تطبيق الدفع، ثم أرفق صورة الإثبات (اختياري) واضغط إرسال الطلب.</p>`;
-  modal({title:cod?'تأكيد الطلب':'الدفع وإرسال الطلب',size:'lg',body,
-    actions:[
-      {label:'إرسال الطلب عبر واتساب',primary:true,icon:I.wa,fn:()=>{sendOrderWa(ctx);return true;}},
-      {label:t('close'),fn:()=>true}
-    ]});
+  const tabBtn=(mm,lbl)=>`<button class="btn ${_payMode===mm?'btn-primary':''}" style="flex:1;justify-content:center;font-size:12px;padding:9px 4px" onclick="setPayMode('${mm}')">${lbl}</button>`;
+  const tabs=`<div style="display:flex;gap:6px;margin-bottom:12px">${tabBtn('cod','عند الاستلام')}${tabBtn('full','دفع كامل')}${tabBtn('partial','جزء + الباقي')}</div>`;
+  let pane='';
+  if(_payMode==='cod'){
+    pane=`<div style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:14px;padding:14px;text-align:center;color:#14532D">
+      <div style="font-size:28px">💵</div><div style="font-weight:800;margin-top:4px">الدفع نقداً عند الاستلام</div>
+      <div style="font-size:12.5px;margin-top:5px">ستدفع ${money(ctx.grandTotal)} ${CUR()} عند استلام طلبك.</div></div>`;
+  }else{
+    const grid=`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">
+      ${apps.map(b=>`<button class="btn ${_payApp===b.id?'btn-primary':''}" style="justify-content:center;font-size:12px;padding:10px 4px" onclick="setPayApp('${b.id}')">${esc(b.name)}</button>`).join('')}</div>`;
+    const numBox=appBox?`<div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:14px;padding:14px;margin-bottom:12px;text-align:center">
+        <div style="font-size:12.5px;color:#1E3A8A;font-weight:700;margin-bottom:6px">حوّل عبر <b>${esc(appBox.name)}</b> إلى الرقم:</div>
+        <div style="font-size:25px;font-weight:800;letter-spacing:1px;direction:ltr;color:#0f172a">${esc(appBox.payNum||DB.settings.payNumber||'')}</div>
+        <button class="btn btn-sm btn-primary" style="margin-top:10px" onclick="copyText('${esc(appBox.payNum||DB.settings.payNumber||'')}')">📋 نسخ الرقم</button></div>`
+      :`<p class="muted" style="font-size:12.5px;text-align:center;margin-bottom:12px">اختر تطبيق الدفع لعرض الرقم</p>`;
+    const depo=_payMode==='partial'
+      ?`<div class="field" style="margin-bottom:12px"><label>المبلغ المدفوع مقدّماً عبر التطبيق</label><input class="inp" id="co_deposit" type="number" step="any" placeholder="مثال: ${Math.round(ctx.grandTotal/2)}"><div class="muted" style="font-size:11.5px;margin-top:4px">الباقي يُدفع نقداً عند الاستلام.</div></div>`
+      :`<div style="font-size:12.5px;color:#475569;margin-bottom:12px">المبلغ المطلوب تحويله كاملاً: <b>${money(ctx.grandTotal)} ${CUR()}</b></div>`;
+    const proof=`<div class="field"><label>إثبات الدفع (صورة التحويل)</label>
+      <div id="co_proofPrev" onclick="document.getElementById('co_proof').click()" style="height:90px;border:1px dashed var(--line);border-radius:12px;display:grid;place-items:center;color:var(--ink);font-size:12.5px;cursor:pointer;background:${_payProof?`url(${_payProof}) center/cover`:'var(--surface-2,#f1f5f9)'} no-repeat">${_payProof?'':svg(I.upload,18)+' <span style=\"margin-inline-start:6px\">إرفاق صورة الإثبات</span>'}</div>
+      <input type="file" id="co_proof" accept="image/*" class="hidden" onchange="pickPayProof(this)"></div>`;
+    pane=grid+numBox+depo+proof;
+  }
+  modal({title:'الدفع وإرسال الطلب',size:'lg',body:summary+tabs+pane,
+    actions:[{label:'إرسال الطلب عبر واتساب',primary:true,icon:I.wa,fn:()=>submitOrder(ctx)},{label:t('close'),fn:()=>true}]});
 }
-function sendOrderWa(ctx){
-  const payNum=DB.settings.payNumber||'20108565';
-  let txt='*'+t('orderMsg')+'*\n\n';
-  txt+=`*${t('coCustomer')}:* ${ctx.name}\n*${t('coPhone')}:* +${ctx.cc} ${ctx.phone}\n`;
-  if(ctx.addr)txt+=`*${t('coAddr')}:* ${ctx.addr}\n`;
-  if(ctx.pay)txt+=`*${t('coPay')}:* ${ctx.pay}\n`;
+function submitOrder(ctx){
+  let payMode=_payMode,deposit=0,appBox=null,payNum='';
+  if(payMode!=='cod'){
+    appBox=payApps().find(b=>b.id===_payApp);
+    if(!appBox){toast('اختر تطبيق الدفع','err');return false;}
+    payNum=appBox.payNum||DB.settings.payNumber||'';
+    if(payMode==='full')deposit=ctx.grandTotal;
+    else{deposit=parseFloat(val('co_deposit'))||0;if(deposit<=0){toast('أدخل المبلغ المدفوع مقدّماً','err');return false;}if(deposit>=ctx.grandTotal){payMode='full';deposit=ctx.grandTotal;}}
+  }
+  const v=getVisitor()||{};
+  if(DB.seq&&!DB.seq.order)DB.seq.order=1;
+  const no=DB.seq?DB.seq.order:Math.floor(Date.now()/1000);if(DB.seq)DB.seq.order++;
+  const o={id:uid('ord'),no,date:new Date().toISOString(),
+    customerId:v.id||regKey(ctx.cc,ctx.phone),name:ctx.name,cc:ctx.cc,phone:ctx.phone,addr:ctx.addr||'',coords:ctx.coords||null,note:ctx.note||'',
+    items:CART.map(l=>({id:l.id,name:l.name,price:l.price,qty:l.qty})),
+    itemsTotal:ctx.itemsTotal,delivery:ctx.delivery,total:ctx.grandTotal,
+    payMode,payApp:appBox?appBox.name:'',payAppId:appBox?appBox.id:'',payNum,deposit,remaining:ctx.grandTotal-deposit,
+    proof:_payProof||'',status:'pending'};
+  DB.orders=DB.orders||[];DB.orders.push(o);save();
+  cloudAddOrder(o).catch(()=>{});
+  sendOrderWa(ctx,o);
+  setTimeout(()=>orderReviewScreen(o),80);
+  return true;
+}
+function orderReviewScreen(o){
+  CART=[];saveCart();updateCartBadge();try{renderStoreGrid();renderDeals();}catch(e){}closeCart();
+  modal({size:'sm',body:`
+    <div style="text-align:center;padding:6px 4px 2px">
+      <div style="width:74px;height:74px;border-radius:50%;background:#FEF9C3;display:grid;place-items:center;margin:0 auto 14px;font-size:34px">⏳</div>
+      <h2 style="font-size:21px;font-weight:800;margin:0 0 10px">طلبك قيد المراجعة</h2>
+      <p style="font-size:14px;font-weight:700;margin:0 0 6px">تم استلام طلبك بنجاح! (#${o.no})</p>
+      <p class="muted" style="font-size:13px;line-height:1.85;margin:0 0 14px">سيراجع المتجر طلبك ويؤكّده قريباً، وتصلك رسالة عند تجهيزه.<br>الإجمالي: <b>${money(o.total)} ${CUR()}</b>${o.payMode!=='cod'?`<br>مدفوع: ${money(o.deposit)} ${CUR()}`:''}${(o.remaining>0&&o.payMode!=='cod')?` · الباقي عند الاستلام: ${money(o.remaining)} ${CUR()}`:''}</p>
+    </div>`,
+    actions:[{label:'الصفحة الرئيسية',primary:true,fn:()=>{showStore();return true;}},{label:'مشاهدة العروض',fn:()=>{closeModal();if(typeof scrollToDeals==='function')setTimeout(scrollToDeals,150);return false;}}]});
+}
+function sendOrderWa(ctx,o){
+  let txt='*'+t('orderMsg')+'* (#'+o.no+')\n\n';
+  txt+=`*${t('coCustomer')}:* ${o.name}\n*${t('coPhone')}:* +${o.cc} ${o.phone}\n`;
+  if(o.addr)txt+=`*${t('coAddr')}:* ${o.addr}\n`;
   txt+=`\n*${t('coItems')}:*\n`;
-  CART.forEach(l=>{txt+=`• ${l.name} — ${l.qty} × ${money(l.price)} = ${money(l.price*l.qty)} ${CUR()}\n`;});
-  txt+=`\n*${t('orderTotal')}: ${money(ctx.total)} ${CUR()}*\n`;
-  const cod=/استلام|عند الطلب|نقد|cash|livraison|réception/i.test(ctx.pay||'');
-  if(!cod)txt+=`💳 رقم الدفع الموحّد: ${payNum}\n`;
-  if(ctx.coords)txt+=`\n*${t('coLocLabel')}:* https://maps.google.com/?q=${ctx.coords.lat},${ctx.coords.lng}\n`;
-  if(ctx.note)txt+=`\n*${t('coNote')}:* ${ctx.note}\n`;
-  if(_payProof)txt+=`\n${t('coProofNote')}\n`;
+  o.items.forEach(l=>{txt+=`• ${l.name} — ${l.qty} × ${money(l.price)} = ${money(l.price*l.qty)} ${CUR()}\n`;});
+  txt+=`الحمل: ${money(o.delivery)} ${CUR()}\n`;
+  txt+=`\n*${t('orderTotal')}: ${money(o.total)} ${CUR()}*\n`;
+  if(o.payMode==='cod')txt+='💵 الدفع عند الاستلام\n';
+  else{txt+=`💳 ${o.payMode==='partial'?'دفع جزئي':'دفع كامل'} عبر ${o.payApp} — الرقم: ${o.payNum}\nمدفوع: ${money(o.deposit)} ${CUR()}`;if(o.remaining>0)txt+=` · الباقي عند الاستلام: ${money(o.remaining)} ${CUR()}`;txt+='\n';}
+  if(o.coords)txt+=`\n*${t('coLocLabel')}:* https://maps.google.com/?q=${o.coords.lat},${o.coords.lng}\n`;
+  if(o.note)txt+=`\n*${t('coNote')}:* ${o.note}\n`;
+  if(o.proof)txt+=`\n${t('coProofNote')}\n`;
   const num=ctx.num;
   const sendLink=()=>window.open(`https://wa.me/${num}?text=${encodeURIComponent(txt)}`,'_blank');
-  if(_payProof&&navigator.canShare){
-    fetch(_payProof).then(r=>r.blob()).then(blob=>{
-      const file=new File([blob],'payment.jpg',{type:blob.type||'image/jpeg'});
-      if(navigator.canShare({files:[file]})){navigator.share({text:txt,files:[file]}).catch(()=>sendLink());}
-      else sendLink();
-    }).catch(()=>sendLink());
-  }else sendLink();
-  toast(t('coReady'),'ok');
+  if(o.proof&&navigator.canShare){fetch(o.proof).then(r=>r.blob()).then(blob=>{const file=new File([blob],'payment.jpg',{type:blob.type||'image/jpeg'});if(navigator.canShare({files:[file]})){navigator.share({text:txt,files:[file]}).catch(()=>sendLink());}else sendLink();}).catch(()=>sendLink());}else sendLink();
+  toast('تم إرسال طلبك','ok');
 }
 function openWhatsApp(){
   const num=(DB.settings.whatsapp||'').replace(/[^0-9]/g,'');
@@ -4691,10 +4849,34 @@ function updateMenuIdentity(){
   const a=document.getElementById('menuAva');if(a)a.style.backgroundImage=`url(${(v&&v.image)||LOGO})`;
 }
 function cloudGetReg(id){if(!FS)return Promise.resolve(null);return FS.collection('registrations').doc(String(id)).get().then(d=>d&&d.exists?d.data():null).catch(()=>null);}
+function notifyVerified(name){
+  const title='🎉 تم توثيق حسابك';
+  const body='أهلاً '+(name||'')+'! تم تفعيل حسابك في '+(DB.settings.name||'مؤسسة الصداقة')+'. مرحباً بك — يمكنك الآن الطلب ومتابعة العروض والخصومات.';
+  try{showInAppNotif(title,body);}catch(e){}
+  try{toast('تم توثيق حسابك ✔','ok');}catch(e){}
+  try{if('Notification'in window&&Notification.permission==='granted'&&navigator.serviceWorker&&navigator.serviceWorker.getRegistration){navigator.serviceWorker.getRegistration().then(r=>{if(r)r.showNotification(title,{body,icon:'icon-192.png',badge:'icon-192.png',vibrate:[120,60,120]});}).catch(()=>{});}}catch(e){}
+}
+function watchVerification(){
+  if(!FS)return;
+  const v=getVisitor();
+  if(!v||!v.id||v.verified)return;
+  if(window._verWatch){try{window._verWatch();}catch(e){}window._verWatch=null;}
+  try{
+    window._verWatch=FS.collection('registrations').doc(String(v.id)).onSnapshot(d=>{
+      const reg=d&&d.exists?d.data():null;
+      if(reg&&reg.verified){
+        const cur=getVisitor();
+        if(cur&&!cur.verified){cur.verified=true;if(reg.name)cur.name=reg.name;if(reg.image)cur.image=reg.image;setVisitor(cur);updateMenuIdentity();notifyVerified(cur.name);}
+        if(window._verWatch){try{window._verWatch();}catch(e){}window._verWatch=null;}
+      }
+    },e=>{});
+  }catch(e){}
+}
 function syncVisitorVerification(){
   const v=getVisitor();if(!v||!v.id)return;
   const p=cloudGetReg(v.id);
-  if(p&&p.then)p.then(reg=>{if(reg&&reg.verified&&!v.verified){v.verified=true;setVisitor(v);updateMenuIdentity();if(!window._verifiedToast){window._verifiedToast=true;toast('تم توثيق حسابك ✔','ok');}}}).catch(()=>{});
+  if(p&&p.then)p.then(reg=>{if(reg&&reg.verified&&!v.verified){v.verified=true;if(reg.name)v.name=reg.name;setVisitor(v);updateMenuIdentity();notifyVerified(v.name);}}).catch(()=>{});
+  watchVerification();
 }
 let _vrImg=null;
 function pickVrImg(input){const f=input.files[0];if(!f)return;downscaleImage(f,uri=>{if(!uri){toast('تعذّر قراءة الصورة','err');return;}_vrImg=uri;const a=document.getElementById('vrAva');if(a){a.style.backgroundImage=`url(${uri})`;a.innerHTML='';}});input.value='';}
@@ -4734,6 +4916,7 @@ function visitorRegister(){
         cloudAddRegistration(reg).catch(()=>{});
         updateMenuIdentity();
         if(verified){toast('تم تحديث بياناتك','ok');return true;}
+        setTimeout(()=>{try{watchVerification();}catch(e){}},900);
         setTimeout(awaitingActivationScreen,80);
         return true;
       }},
@@ -4785,7 +4968,7 @@ function customerLogin(){
         toast('جارٍ البحث عن حسابك...','ok');
         const p=cloudGetReg(regKey(cc,phone));
         if(p&&p.then){p.then(reg=>{
-          if(reg&&reg.name){setVisitor({id:regKey(cc,phone),name:reg.name,cc:reg.cc||cc,phone:reg.phone||phone,verified:!!reg.verified,image:reg.image||''});updateMenuIdentity();closeModal();toast('مرحباً '+reg.name+(reg.verified?' (موثّق ✔)':' (بانتظار التفعيل)'),'ok');showStore();}
+          if(reg&&reg.name){setVisitor({id:regKey(cc,phone),name:reg.name,cc:reg.cc||cc,phone:reg.phone||phone,verified:!!reg.verified,image:reg.image||''});updateMenuIdentity();closeModal();toast('مرحباً '+reg.name+(reg.verified?' (موثّق ✔)':' (بانتظار التفعيل)'),'ok');showStore();setTimeout(()=>{try{watchVerification();}catch(e){}},600);}
           else{toast('لا يوجد حساب بهذا الرقم — سجّل حساباً جديداً','err');}
         }).catch(()=>toast('تعذّر الاتصال — تحقّق من الإنترنت','err'));}
         else toast('لا اتصال بالسحابة','err');
