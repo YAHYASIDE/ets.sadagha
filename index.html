@@ -3180,7 +3180,7 @@ function vchPartyName(v){
   if(v.partyType==='supplier'){const s=DB.suppliers.find(x=>x.id===v.partyId);return s?s.name:(v.partyName||'مورد');}
   return v.partyName||'حساب آخر';
 }
-const APP_BUILD='يومية-جديدة · 18/06 #37';
+const APP_BUILD='يومية-جديدة · 19/06 #40';
 let jrnDay=null,jrnBox='',jrnQ='';
 function journalEntries(day,boxId){
   const E=[];const sameDay=d=>(d||'').slice(0,10)===day;
@@ -3743,25 +3743,84 @@ function delExpense(id){
 
 /* ---------- الصندوق ---------- */
 function vCash(v){
-  const today=DB.cash.filter(c=>c.date===todayISO());
-  const inToday=today.filter(c=>c.type==='in').reduce((a,c)=>a+c.amount,0);
-  const outToday=today.filter(c=>c.type==='out').reduce((a,c)=>a+c.amount,0);
   v.innerHTML=`
   <div class="box-grid">
-    ${boxes().map(bx=>`<div class="card box-card">
-      <div class="box-top"><span class="label">${esc(bx.name)}</span>${svg(I.wallet,20)}</div>
-      <div class="val t-num" style="color:var(--primary-d)">${money(boxBalance(bx.id))} <small>${CUR()}</small></div>
-      <button class="btn btn-sm btn-primary" style="margin-top:10px;width:100%;justify-content:center" onclick="cashCollect('${bx.id}')">${svg(I.download,15)} تحصيل ليلي</button>
-    </div>`).join('')}
+    ${boxes().map(bx=>{const bal=boxBalance(bx.id);const tlbl=bx.type==='bank'?'بنك':bx.type==='app'?'تطبيق':'نقدي';
+      return `<div class="card box-card" style="cursor:pointer" onclick="boxStatement('${bx.id}')">
+      <div class="box-top"><span class="label">${esc(bx.name)} <small class="muted" style="font-weight:600">· ${tlbl}</small></span>${svg(bx.type==='cash'?I.wallet:I.box,20)}</div>
+      <div class="val t-num" style="color:${bal<0?'var(--danger)':'var(--primary-d)'}">${money(bal)} <small>${CUR()}</small></div>
+      <div style="display:flex;gap:6px;margin-top:10px">
+        <button class="btn btn-sm" style="flex:1;justify-content:center" onclick="event.stopPropagation();boxStatement('${bx.id}')">${svg(I.report,14)} كشف الحساب</button>
+        <button class="btn btn-sm btn-icon" style="color:var(--danger);border-color:var(--danger)" title="تصفير الرصيد" onclick="event.stopPropagation();resetBox('${bx.id}')">${svg(I.undo,15)}</button>
+      </div>
+    </div>`;}).join('')}
     <div class="card box-card total"><div class="box-top"><span class="label">المجموع الكلي</span>${svg(I.wallet,20)}</div>
       <div class="val t-num">${money(cashBalance())} <small>${CUR()}</small></div>
-      <div class="muted" style="font-size:12px;margin-top:10px">وارد اليوم: <b class="amt-in">${money(inToday)}</b> · صادر: <b class="amt-out">${money(outToday)}</b></div></div>
+      <div class="muted" style="font-size:12px;margin-top:10px">مجموع أرصدة كل الصناديق والحسابات</div></div>
   </div>
   <div class="toolbar" style="margin-top:14px"><div class="spacer" style="flex:1"></div>
     <button class="btn" onclick="cashEntry('in')">${svg(I.download,17)} إيداع يدوي</button>
-    <button class="btn" onclick="cashEntry('out')">${svg(I.upload,17)} سحب يدوي</button></div>
-  <div class="panel"><div class="panel-h">${svg(I.wallet,18)}<h3>حركة الصناديق</h3></div>
-    <div class="tbl-wrap">${cashTable()}</div></div>`;
+    <button class="btn" onclick="cashEntry('out')">${svg(I.upload,17)} سحب يدوي</button></div>`;
+}
+let _bsId=null,_bsMode='day',_bsDate=null,_bsMonth=null;
+function boxStatement(id){_bsId=id;_bsMode='day';_bsDate=todayISO();_bsMonth=todayISO().slice(0,7);renderBoxStmt();}
+function bsSetMode(m){_bsMode=m;renderBoxStmt();}
+function bsSetDate(v){if(v){_bsDate=v;_bsMode='day';renderBoxStmt();}}
+function bsSetMonth(v){if(v){_bsMonth=v;_bsMode='month';renderBoxStmt();}}
+function renderBoxStmt(){
+  const bx=boxes().find(b=>b.id===_bsId);if(!bx)return;
+  const all=(DB.cash||[]).filter(c=>(c.box||defBox())===_bsId).slice().sort((a,b)=>(a.date<b.date?-1:a.date>b.date?1:0));
+  let inPeriod=()=>true,periodStart=null,periodLabel='كل الحركات';
+  if(_bsMode==='day'){inPeriod=c=>c.date===_bsDate;periodStart=_bsDate;periodLabel='يوم '+fmtDate(_bsDate);}
+  else if(_bsMode==='month'){inPeriod=c=>(c.date||'').slice(0,7)===_bsMonth;periodStart=_bsMonth+'-01';periodLabel='شهر '+_bsMonth;}
+  let opening=Number(bx.start)||0;
+  if(periodStart)all.forEach(c=>{if((c.date||'')<periodStart)opening+=(c.type==='in'?1:-1)*(Number(c.amount)||0);});
+  const rows=all.filter(inPeriod);
+  const tin=rows.filter(c=>c.type==='in').reduce((a,c)=>a+(Number(c.amount)||0),0);
+  const tout=rows.filter(c=>c.type==='out').reduce((a,c)=>a+(Number(c.amount)||0),0);
+  let run=opening;
+  const cell='padding:8px 10px;border:1px solid var(--line)';
+  const body=rows.map(c=>{run+=(c.type==='in'?1:-1)*(Number(c.amount)||0);
+    return `<tr><td style="${cell};text-align:center;white-space:nowrap" class="muted">${fmtDate(c.date)}</td>
+      <td style="${cell};text-align:start">${esc(c.note||'—')}</td>
+      <td style="${cell};text-align:center;color:var(--success)">${c.type==='in'?money(c.amount):''}</td>
+      <td style="${cell};text-align:center;color:var(--danger)">${c.type==='out'?money(c.amount):''}</td>
+      <td style="${cell};text-align:center"><b>${money(run)}</b></td></tr>`;}).join('');
+  const chip=(m,l)=>`<button class="chip ${_bsMode===m?'active':''}" onclick="bsSetMode('${m}')">${l}</button>`;
+  modal({title:'كشف حساب — '+esc(bx.name),size:'lg',body:`
+    <div id="bxStmt" dir="rtl" style="background:var(--surface);color:var(--ink)">
+      <div style="text-align:center;border-bottom:2px solid var(--primary);padding-bottom:10px;margin-bottom:12px">
+        <div style="font-size:16px;font-weight:800;color:var(--primary-d)">${esc(DB.settings.name||'مؤسسة الصداقة')}</div>
+        <div style="font-size:14px;font-weight:700;margin-top:3px">كشف حساب: ${esc(bx.name)}</div>
+        <div class="muted" style="font-size:12px">${periodLabel}</div>
+      </div>
+      <div class="no-print" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+        ${chip('day','اليوم')}${chip('month','هذا الشهر')}${chip('all','الكل')}
+        <input class="inp" type="date" value="${_bsDate}" onchange="bsSetDate(this.value)" style="width:auto;padding:5px 8px">
+        <input class="inp" type="month" value="${_bsMonth}" onchange="bsSetMonth(this.value)" style="width:auto;padding:5px 8px">
+      </div>
+      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px;font-size:13px">
+        <span>الرصيد الحالي للحساب: <b style="color:var(--primary-d)">${m(boxBalance(_bsId))}</b></span>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="background:var(--surface-2)"><th style="${cell};text-align:center">التاريخ</th><th style="${cell};text-align:start">البيان</th><th style="${cell};text-align:center">وارد</th><th style="${cell};text-align:center">صادر</th><th style="${cell};text-align:center">الرصيد</th></tr></thead>
+        <tbody>
+          <tr style="background:var(--surface-2)"><td style="${cell};text-align:center" class="muted">—</td><td style="${cell};text-align:start;font-weight:700">رصيد ما قبل الفترة</td><td style="${cell}"></td><td style="${cell}"></td><td style="${cell};text-align:center"><b>${money(opening)}</b></td></tr>
+          ${body||''}
+        </tbody>
+        <tfoot><tr style="background:var(--surface-2);font-weight:800"><td style="${cell};text-align:start" colspan="2">إجمالي الفترة</td><td style="${cell};text-align:center;color:var(--success)">${money(tin)}</td><td style="${cell};text-align:center;color:var(--danger)">${money(tout)}</td><td style="${cell};text-align:center">${money(run)}</td></tr></tfoot>
+      </table>
+      ${rows.length?'':'<div class="empty" style="padding:14px">لا حركات في هذه الفترة</div>'}
+    </div>`,
+    actions:[{label:'تصفير الحساب',icon:I.undo,fn:()=>{closeModal();resetBox(_bsId);return false;}},{label:'طباعة',icon:I.print,fn:()=>{printEl('bxStmt');return false;}},{label:'إغلاق',primary:true,fn:()=>true}]});
+}
+function resetBox(id){
+  const bal=boxBalance(id);
+  if(Math.round(bal)===0){toast('الرصيد صفر بالفعل','ok');return;}
+  confirmDlg('تصفير '+boxName(id)+'؟','سيُسجَّل قيد تسوية يجعل رصيد هذا الحساب صفراً (تبقى الحركات في السجل). الرصيد الحالي: '+m(bal),()=>{
+    if(bal>0)addCash('out',bal,'تصفير الحساب','',id);else addCash('in',-bal,'تصفير الحساب','',id);
+    save();toast('تم تصفير '+boxName(id),'ok');render();
+  });
 }
 function cashTable(){
   const list=[...DB.cash].reverse().slice(0,120);
@@ -3782,21 +3841,8 @@ function cashEntry(type){
       save();toast('تم تسجيل الحركة','ok');render();
     }},{label:'إلغاء',fn:()=>true}]});
 }
-function cashCollect(boxId){
-  const bal=boxBalance(boxId);
-  modal({title:'تحصيل ليلي — '+boxName(boxId),body:`
-    <p class="muted" style="font-size:13px;margin-bottom:12px">الرصيد الحالي: <b style="color:var(--primary-d)">${m(bal)}</b>. اكتب المبلغ الذي تتركه في الصندوق (الباقي)، ويُسحب الباقي كمبلغ محصّل.</p>
-    <div class="field"><label>المبلغ المتروك (الباقي من الكاش)</label><input class="inp" id="cc_left" type="number" step="any" value="0" oninput="ccCalc(${bal})"></div>
-    <div class="field" style="margin-top:12px"><label>المبلغ المُحصّل</label><input class="inp" id="cc_take" type="number" step="any" value="${bal}" disabled></div>
-    <div class="field" style="margin-top:12px"><label>ملاحظة (اسم المستلِم مثلاً)</label><input class="inp" id="cc_note" placeholder="تحصيل ليلي"></div>`,
-    actions:[{label:'تحصيل',primary:true,fn:()=>{
-      const left=parseFloat(val('cc_left'))||0;const take=bal-left;
-      if(take<=0){toast('لا يوجد مبلغ للتحصيل','err');return false;}
-      addCash('out',take,(val('cc_note').trim()||'تحصيل ليلي')+' (تبقّى '+money(left)+')','',boxId);
-      save();toast('تم تحصيل '+money(take),'ok');render();
-    }},{label:'إلغاء',fn:()=>true}]});
-}
-function ccCalc(bal){const left=parseFloat(val('cc_left'))||0;const t=document.getElementById('cc_take');if(t)t.value=Math.max(0,bal-left);}
+function ccCalc(){}
+
 
 /* ---------- التقارير ---------- */
 let repPeriod='month';
@@ -4881,11 +4927,15 @@ function openImageSearch(ctx){
   _aiCtx=ctx||'store';
   const haveImgs=DB.products.filter(p=>p.image).length;
   modal({title:'البحث بصورة (ذكاء اصطناعي)',size:'lg',body:`
+    <input type="file" id="aiFileCam" accept="image/*" capture="environment" class="hidden" onchange="aiImagePick(this)">
     <input type="file" id="aiFile" accept="image/*" class="hidden" onchange="aiImagePick(this)">
     ${haveImgs?`
     <div id="aiPick" style="text-align:center;padding:10px 0 4px">
-      <button class="btn btn-primary" style="padding:12px 24px" onclick="document.getElementById('aiFile').click()">${svg(I.search,17)} اختر صورة من معرض الهاتف أو التقطها</button>
-      <p class="muted" style="font-size:13px;margin-top:10px">سيقارن الذكاء الاصطناعي صورتك بصور منتجاتك (${haveImgs} منتج بصورة) ويعرض الأقرب شبهاً.<br>يتطلب اتصال إنترنت عند أول استخدام لتحميل النموذج.</p>
+      <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+        <button class="btn btn-primary" style="padding:12px 22px" onclick="document.getElementById('aiFileCam').click()">📷 التقاط بالكاميرا</button>
+        <button class="btn" style="padding:12px 22px" onclick="document.getElementById('aiFile').click()">🖼️ اختيار من المعرض</button>
+      </div>
+      <p class="muted" style="font-size:13px;margin-top:12px">سيقارن الذكاء الاصطناعي صورتك بصور منتجاتك (${haveImgs} منتج بصورة) ويعرض الأقرب شبهاً.<br>يتطلب اتصال إنترنت عند أول استخدام لتحميل النموذج.</p>
     </div>
     <div id="aiQuery"></div>
     <div id="aiResults"></div>`
@@ -4912,19 +4962,22 @@ function aiImagePick(input){
 }
 function renderAIResults(list){
   const r=document.getElementById('aiResults');if(!r)return;
-  if(!list.length){r.innerHTML=`<div class="empty">لا نتائج</div>`;return;}
-  r.innerHTML=`<div class="muted" style="font-size:13px;margin:4px 0 10px">أقرب المنتجات شبهاً:</div>`+
-    list.map(({p,score})=>{const pct=Math.round(score*100);return `
-    <div class="row-line">
-      <span style="width:46px;height:46px;border-radius:10px;flex:0 0 auto;background:#f1f5f9 center/cover no-repeat;background-image:url(${p.image})"></span>
+  if(!list.length){r.innerHTML=`<div class="empty">لا نتائج مطابقة — جرّب صورة أوضح</div>`;return;}
+  r.innerHTML=`<div class="muted" style="font-size:13px;margin:4px 0 10px">أقرب المنتجات شبهاً (اضغط على المنتج لعرضه وإضافته):</div>`+
+    list.map(({p,score})=>{const pct=Math.round(score*100);
+      const open=_aiCtx==='store'?`closeModal();openProductDetail('${p.id}')`:`closeModal();editProduct('${p.id}')`;
+      const actBtn=_aiCtx==='store'
+        ?`<button class="btn btn-primary btn-sm" title="إضافة للسلة" onclick="event.stopPropagation();addToCartStore('${p.id}')">${svg(I.plus,15)}</button>`
+        :`<button class="btn btn-sm" title="تعديل" onclick="event.stopPropagation();closeModal();editProduct('${p.id}')">${svg(I.edit,15)}</button>`;
+      return `<div class="row-line" style="cursor:pointer" onclick="${open}">
+      <span style="width:48px;height:48px;border-radius:10px;flex:0 0 auto;background:var(--surface-2) center/cover no-repeat;background-image:url(${p.image})"></span>
       <div style="flex:1"><b style="font-size:14px">${esc(p.name)}</b>
-        <div class="muted" style="font-size:12px">${esc(p.category)} · ${esc(p.code||'')}</div></div>
-      <div style="text-align:end">
+        <div class="muted" style="font-size:12px">${esc(p.category||'')} · ${esc(p.code||'')}${p.qty<=0?' · <span style="color:var(--danger)">نفد</span>':''}</div></div>
+      <div style="text-align:end;margin-inline-end:8px">
         <div style="font-weight:800;color:${pct>=70?'var(--success)':pct>=50?'var(--warn)':'var(--muted)'};font-size:13px">${pct}%</div>
         <div style="font-weight:800;color:var(--primary-d);font-size:13px">${money(p.price)} ${CUR()}</div>
       </div>
-      ${_aiCtx==='store'?`<button class="btn btn-primary btn-sm" ${p.qty<=0?'disabled':''} onclick="addToCartStore('${p.id}')">${svg(I.plus,15)}</button>`
-        :`<button class="btn btn-sm" onclick="closeModal();editProduct('${p.id}')">${svg(I.edit,15)}</button>`}
+      ${actBtn}
     </div>`;}).join('');
 }
 
@@ -5084,6 +5137,7 @@ let storeCat='';
 
 function showStore(){
   document.getElementById('adminUI').classList.add('hidden');
+  const fb=document.getElementById('refreshFab');if(fb)fb.style.display='none';
   document.getElementById('storefront').classList.remove('hidden');
   document.getElementById('storeNav').classList.remove('hidden');
   applyDark();applyLang();window.scrollTo(0,0);
@@ -5103,7 +5157,16 @@ function showAdmin(){
   buildNav();
   go(allowedPages()[0]||'dash');
   window.scrollTo(0,0);
+  ensureRefreshFab();
   try{setTimeout(()=>toast('النسخة الحالية: '+(typeof APP_BUILD!=='undefined'?APP_BUILD:'?'),'ok'),400);}catch(e){}
+}
+function forceRefresh(){try{save();}catch(e){}toast('جارٍ التحديث...','ok');setTimeout(()=>location.replace(location.pathname+'?v='+Date.now()),250);}
+function ensureRefreshFab(){
+  let fb=document.getElementById('refreshFab');
+  if(!fb){fb=document.createElement('button');fb.id='refreshFab';fb.title='تحديث التطبيق (جلب آخر نسخة)';fb.setAttribute('aria-label','تحديث');
+    fb.style.cssText='position:fixed;bottom:20px;inset-inline-start:20px;z-index:950;width:54px;height:54px;border-radius:50%;background:var(--primary);color:#fff;border:none;box-shadow:0 5px 16px rgba(0,0,0,.28);display:grid;place-items:center;cursor:pointer';
+    fb.innerHTML=svg(I.undo,24);fb.onclick=forceRefresh;document.body.appendChild(fb);}
+  fb.style.display='grid';
 }
 function renderStore(){
   _topSellers=null;
