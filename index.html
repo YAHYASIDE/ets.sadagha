@@ -3927,7 +3927,7 @@ function vchPartyName(v){
   if(v.partyType==='supplier'){const s=DB.suppliers.find(x=>x.id===v.partyId);return s?s.name:(v.partyName||'مورد');}
   return v.partyName||'حساب آخر';
 }
-const APP_BUILD='يومية-جديدة · 20/06 #90';
+const APP_BUILD='يومية-جديدة · 20/06 #93';
 let jrnDay=null,jrnBox='',jrnQ='';
 function journalEntries(day,boxId){
   const E=[];const sameDay=d=>(d||'').slice(0,10)===day;
@@ -6081,7 +6081,8 @@ function modal({title,body,actions,size}){
     b.onclick=()=>{const close=a.fn?a.fn():true;if(close!==false)closeModal();};
     af.appendChild(b);
   });
-  const first=root.querySelector('input,select,textarea');if(first)setTimeout(()=>first.focus(),50);
+  const first=root.querySelector('input,select,textarea');
+  if(first){const isNum=(first.type==='number'||first.type==='file'||(first.getAttribute&&first.getAttribute('inputmode')==='numeric'));if(!isNum)setTimeout(()=>first.focus(),50);}
   document.body.classList.add('modal-lock');
 }
 function closeModal(){document.body.classList.remove('modal-lock');document.getElementById('modalRoot').innerHTML='';}
@@ -6124,8 +6125,8 @@ let CART=[];
 const CAT_ICONS={'مواد البناء':I.brick,'الكهرباء':I.bolt,'السباكة':I.pipe,'الأدوات اليدوية':I.wrench,'المعدات':I.drill,'الزراعة':I.plant,'الدهانات':I.roller,'مستلزمات المنازل':I.house2,'الحديد':I.rebar,'الصين':I.globe,'تحويل':I.transfer};
 const CAT_FR={'مواد البناء':'Matériaux de construction','الكهرباء':'Électricité','السباكة':'Plomberie','الأدوات اليدوية':'Outils à main','المعدات':'Équipement','الزراعة':'Agriculture','الدهانات':'Peintures','مستلزمات المنازل':'Maison','الحديد':'Fer','الصين':'Chine','تحويل':'Transfert'};
 const L={
- ar:{brand:'مؤسسة الصداقة',searchPh:'ابحث عن منتج أو كود...',search:'بحث',qaCats:'تصفّح الأقسام',qaCatsSub:'كل المنتجات',qaTop:'الأكثر مبيعاً',qaTopSub:'أفضل العروض',qaWa:'طلب عبر واتساب',qaWaSub:'تواصل سريع',secCats:'الأقسام',seeAll:'عرض الكل ›',secDeals:'أفضل العروض',more:'المزيد ›',allProducts:'كل المنتجات',navHome:'الرئيسية',navCats:'الأقسام',navCart:'السلة',navAccount:'حساب',navWa:'واتساب',details:'تفاصيل المنتج',quantity:'الكمية',addCart:'أضف للسلة',noDesc:'لا يوجد وصف لهذا المنتج.',inStock:'متوفر',tagNew:'جديد',tagTop:'الأكثر مبيعاً',tagLimited:'كمية محدودة',favorites:'المفضّلة',favEmpty:'لا توجد منتجات مفضّلة بعد',darkMode:'الوضع الليلي',darkOn:'تم تفعيل الوضع الليلي',darkOff:'تم إيقاف الوضع الليلي',related:'منتجات مشابهة',rights:'جميع الحقوق محفوظة',whyUs:'لماذا مؤسسة الصداقة؟',tQuality:'جودة مضمونة',tQualitySub:'بضاعة أصلية',tSupport:'دعم سريع',tSupportSub:'عبر واتساب',tPrice:'أسعار منافسة',tPriceSub:'وأسعار الجملة',tTrust:'خبرة وثقة',tTrustSub:'سنوات في السوق',payTitle:'طرق الدفع المتاحة',recoTitle:'توصيات لك',checkoutTitle:'إتمام الطلب',coName:'الاسم',coPhone:'رقم الهاتف',coAddr:'العنوان',coPay:'طريقة الدفع',coPayDef:'عند الطلب',coNote:'ملاحظة',coLoc:'موقعك للتوصيل',coLocBtn:'تحديد موقعي تلقائياً',coLocOk:'تم تحديد موقعك',coLocWait:'جارٍ تحديد الموقع...',coLocErr:'تعذّر تحديد الموقع — اكتب العنوان يدوياً',coView:'عرض على الخريطة',coProof:'إثبات الدفع (صورة)',coProofBtn:'إرفاق صورة الدفع',coSend:'إرسال الطلب عبر واتساب',coNeed:'أدخل الاسم ورقم الهاتف',coCustomer:'الزبون',coItems:'المنتجات',coLocLabel:'الموقع',coProofNote:'(صورة الدفع مرفقة مع الطلب)',coReady:'تم تجهيز الطلب — أكمل الإرسال في واتساب',hello:'مرحباً',helloGuest:'أهلاً بك في مؤسسة الصداقة',yourName:'اسمك',nameHint:'أدخل اسمك ليظهر ترحيب خاص بك.',namePh:'اكتب اسمك هنا',save:'حفظ',off:'خصم',all:'الكل',out:'نفد',noProducts:'لا توجد منتجات',bestPrice:'أفضل سعر',addedCart:'أُضيف إلى السلة',cartTitle:'🛒 سلة المشتريات',cartEmpty:'سلتك فارغة',cartEmptySub:'تصفّح المنتجات وأضف ما تحتاجه',total:'الإجمالي',checkoutWa:'إتمام الطلب والدفع',clearCart:'تفريغ السلة',menuGuest:'زائر',mOrders:'طلباتي',mAbout:'معلومات عنا',mTerms:'الشروط والاستخدام',mSupport:'فريق الدعم',mAdmin:'دخول كمدير',voiceNo:'البحث الصوتي غير مدعوم في هذا المتصفح',listening:'جارٍ الاستماع...',orderMsg:'طلب جديد — مؤسسة الصداقة',orderTotal:'الإجمالي',waNotSet:'لم يُضبط رقم واتساب بعد',aboutDef:'مؤسسة الصداقة للتجارة العامة — واحدة من أبرز المؤسسات في مجال التجارة العامة في المنطقة. نوفّر تشكيلة واسعة من المواد والمنتجات بأسعار منافسة وجودة عالية.',termsDef:'• الأسعار قابلة للتغيير حسب توفّر المواد.\n• الطلبات تُؤكَّد عبر واتساب قبل التسليم.\n• يُرجى التأكد من المنتجات عند الاستلام.\n• للاستفسار تواصل مع فريق الدعم.',contactWa:'تواصل عبر واتساب',close:'إغلاق',ok:'موافق'},
- fr:{brand:'ETS SADAGA',searchPh:'Rechercher un produit...',search:'Chercher',qaCats:'Catégories',qaCatsSub:'Tous les produits',qaTop:'Meilleures ventes',qaTopSub:'Offres',qaWa:'Commander via WhatsApp',qaWaSub:'Contact rapide',secCats:'Catégories',seeAll:'Voir tout ›',secDeals:'Meilleures offres',more:'Plus ›',allProducts:'Tous les produits',navHome:'Accueil',navCats:'Catégories',navCart:'Panier',navAccount:'Compte',navWa:'WhatsApp',details:'Détails du produit',quantity:'Quantité',addCart:'Ajouter au panier',noDesc:'Aucune description pour ce produit.',inStock:'En stock',tagNew:'Nouveau',tagTop:'Top vente',tagLimited:'Stock limité',favorites:'Favoris',favEmpty:'Aucun favori pour le moment',darkMode:'Mode sombre',darkOn:'Mode sombre activé',darkOff:'Mode sombre désactivé',related:'Produits similaires',rights:'Tous droits réservés',whyUs:'Pourquoi ETS SADAGA ?',tQuality:'Qualité garantie',tQualitySub:'Produits authentiques',tSupport:'Support rapide',tSupportSub:'via WhatsApp',tPrice:'Prix compétitifs',tPriceSub:'et prix de gros',tTrust:'Confiance & expérience',tTrustSub:'années sur le marché',payTitle:'Moyens de paiement',recoTitle:'Recommandations',checkoutTitle:'Finaliser la commande',coName:'Nom',coPhone:'Téléphone',coAddr:'Adresse',coPay:'Mode de paiement',coPayDef:'À la commande',coNote:'Note',coLoc:'Votre localisation',coLocBtn:'Me localiser automatiquement',coLocOk:'Localisation détectée',coLocWait:'Localisation en cours...',coLocErr:'Localisation indisponible — saisissez l\'adresse',coView:'Voir sur la carte',coProof:'Preuve de paiement (image)',coProofBtn:'Joindre la preuve',coSend:'Envoyer via WhatsApp',coNeed:'Entrez le nom et le téléphone',coCustomer:'Client',coItems:'Produits',coLocLabel:'Localisation',coProofNote:'(Preuve de paiement jointe)',coReady:'Commande prête — terminez l\'envoi sur WhatsApp',hello:'Bonjour',helloGuest:'Bienvenue chez ETS SADAGA',yourName:'Votre nom',nameHint:'Entrez votre nom pour un accueil personnalisé.',namePh:'Écrivez votre nom ici',save:'Enregistrer',off:'remise',all:'Tout',out:'Rupture',noProducts:'Aucun produit',bestPrice:'Meilleur prix',addedCart:'Ajouté au panier',cartTitle:'🛒 Panier',cartEmpty:'Votre panier est vide',cartEmptySub:'Parcourez les produits et ajoutez ce qu\'il vous faut',total:'Total',checkoutWa:'Finaliser la commande',clearCart:'Vider le panier',menuGuest:'Visiteur',mOrders:'Mes commandes',mAbout:'À propos',mTerms:'Conditions d\'utilisation',mSupport:'Support',mAdmin:'Espace admin',voiceNo:'Recherche vocale non supportée sur ce navigateur',listening:'À l\'écoute...',orderMsg:'Nouvelle commande — ETS SADAGA',orderTotal:'Total',waNotSet:'Numéro WhatsApp non configuré',aboutDef:'ETS SADAGA pour le commerce général — l\'une des principales entreprises du commerce général dans la région. Nous offrons une large gamme de produits à des prix compétitifs et de haute qualité.',termsDef:'• Les prix peuvent varier selon la disponibilité.\n• Les commandes sont confirmées via WhatsApp avant livraison.\n• Veuillez vérifier les produits à la réception.\n• Pour toute question, contactez le support.',contactWa:'Contacter via WhatsApp',close:'Fermer',ok:'OK'}
+ ar:{brand:'مؤسسة الصداقة',searchPh:'ابحث عن منتج أو كود...',search:'بحث',qaCats:'تصفّح الأقسام',qaCatsSub:'كل المنتجات',qaTop:'الأكثر مبيعاً',qaTopSub:'أفضل العروض',qaWa:'طلب عبر واتساب',qaWaSub:'تواصل سريع',secCats:'الأقسام',seeAll:'عرض الكل ›',secDeals:'أفضل العروض',more:'المزيد ›',allProducts:'كل المنتجات',navHome:'الرئيسية',navCats:'الأقسام',navCart:'السلة',navAccount:'حساب',navWa:'واتساب',details:'تفاصيل المنتج',quantity:'الكمية',addCart:'أضف للسلة',noDesc:'لا يوجد وصف لهذا المنتج.',inStock:'متوفر',tagNew:'جديد',tagTop:'الأكثر مبيعاً',tagLimited:'كمية محدودة',favorites:'المفضّلة',favEmpty:'لا توجد منتجات مفضّلة بعد',darkMode:'الوضع الليلي',darkOn:'تم تفعيل الوضع الليلي',darkOff:'تم إيقاف الوضع الليلي',related:'منتجات مشابهة',rights:'جميع الحقوق محفوظة',whyUs:'لماذا مؤسسة الصداقة؟',tQuality:'جودة مضمونة',tQualitySub:'بضاعة أصلية',tSupport:'دعم سريع',tSupportSub:'عبر واتساب',tPrice:'أسعار منافسة',tPriceSub:'وأسعار الجملة',tTrust:'خبرة وثقة',tTrustSub:'سنوات في السوق',payTitle:'طرق الدفع المتاحة',recoTitle:'توصيات لك',checkoutTitle:'إتمام الطلب',coName:'الاسم',coPhone:'رقم الهاتف',coAddr:'العنوان',coPay:'طريقة الدفع',coPayDef:'عند الطلب',coNote:'ملاحظة',coLoc:'موقعك للتوصيل',coLocBtn:'تحديد موقعي تلقائياً',coLocOk:'تم تحديد موقعك',coLocWait:'جارٍ تحديد الموقع...',coLocErr:'تعذّر تحديد الموقع — اكتب العنوان يدوياً',coView:'عرض على الخريطة',coProof:'إثبات الدفع (صورة)',coProofBtn:'إرفاق صورة الدفع',coSend:'إرسال الطلب عبر واتساب',coNeed:'أدخل الاسم ورقم الهاتف',coCustomer:'الزبون',coItems:'المنتجات',coLocLabel:'الموقع',coProofNote:'(صورة الدفع مرفقة مع الطلب)',coReady:'تم تجهيز الطلب — أكمل الإرسال في واتساب',hello:'مرحباً',helloGuest:'أهلاً بك في مؤسسة الصداقة',yourName:'اسمك',nameHint:'أدخل اسمك ليظهر ترحيب خاص بك.',namePh:'اكتب اسمك هنا',save:'حفظ',off:'خصم',all:'الكل',out:'نفد',noProducts:'لا توجد منتجات',bestPrice:'أفضل سعر',addedCart:'أُضيف إلى السلة',cartTitle:'🛒 سلة المشتريات',cartEmpty:'سلتك فارغة',cartEmptySub:'تصفّح المنتجات وأضف ما تحتاجه',total:'الإجمالي',checkoutWa:'إتمام الطلب والدفع',clearCart:'تفريغ السلة',menuGuest:'زائر',mOrders:'طلباتي',mAbout:'معلومات عنا',mTerms:'الشروط والاستخدام',mSupport:'فريق الدعم',mAdmin:'دخول كمدير',voiceNo:'البحث الصوتي غير مدعوم في هذا المتصفح',listening:'جارٍ الاستماع...',orderMsg:'طلب جديد — مؤسسة الصداقة',orderTotal:'الإجمالي',waNotSet:'لم يُضبط رقم واتساب بعد',aboutDef:'مؤسسة الصداقة للتجارة العامة — واحدة من أبرز المؤسسات في مجال التجارة العامة في المنطقة. نوفّر تشكيلة واسعة من المواد والمنتجات بأسعار منافسة وجودة عالية.',termsDef:'• الأسعار قابلة للتغيير حسب توفّر المواد.\n• الطلبات تُؤكَّد عبر واتساب قبل التسليم.\n• يُرجى التأكد من المنتجات عند الاستلام.\n• للاستفسار تواصل مع فريق الدعم.',contactWa:'تواصل عبر واتساب',close:'إغلاق',ok:'موافق',mRegister:'سجّل بياناتي',mStatement:'كشف حسابي',mLogout:'تسجيل الخروج',mLogin:'تسجيل الدخول بحساب',accMy:'حسابي',accVerified:'موثّق',accUnverified:'غير موثّق',accStmtBtn:'كشف حسابي (الديون والمدفوعات)',accMore:'المزيد من الخيارات',accAdmin:'دخول كمدير / موظّف',accPrompt:'سجّل حسابك أو ادخل بحسابك للاستفادة من المتابعة والعروض.',accLoginExisting:'تسجيل الدخول بحساب موجود',balOwe:'عليك',balCredit:'لك (رصيد)',balLabel:'الرصيد',ptsBalance:'رصيد',ptsHint:'تكسبها مع كل شراء وتستبدلها بخصم',blockedMsg:'⛔ حسابك محظور بسبب معلومات/إثباتات دفع غير صحيحة متكرّرة. تواصل مع المتجر لرفع الحظر.'},
+ fr:{brand:'ETS SADAGA',searchPh:'Rechercher un produit...',search:'Chercher',qaCats:'Catégories',qaCatsSub:'Tous les produits',qaTop:'Meilleures ventes',qaTopSub:'Offres',qaWa:'Commander via WhatsApp',qaWaSub:'Contact rapide',secCats:'Catégories',seeAll:'Voir tout ›',secDeals:'Meilleures offres',more:'Plus ›',allProducts:'Tous les produits',navHome:'Accueil',navCats:'Catégories',navCart:'Panier',navAccount:'Compte',navWa:'WhatsApp',details:'Détails du produit',quantity:'Quantité',addCart:'Ajouter au panier',noDesc:'Aucune description pour ce produit.',inStock:'En stock',tagNew:'Nouveau',tagTop:'Top vente',tagLimited:'Stock limité',favorites:'Favoris',favEmpty:'Aucun favori pour le moment',darkMode:'Mode sombre',darkOn:'Mode sombre activé',darkOff:'Mode sombre désactivé',related:'Produits similaires',rights:'Tous droits réservés',whyUs:'Pourquoi ETS SADAGA ?',tQuality:'Qualité garantie',tQualitySub:'Produits authentiques',tSupport:'Support rapide',tSupportSub:'via WhatsApp',tPrice:'Prix compétitifs',tPriceSub:'et prix de gros',tTrust:'Confiance & expérience',tTrustSub:'années sur le marché',payTitle:'Moyens de paiement',recoTitle:'Recommandations',checkoutTitle:'Finaliser la commande',coName:'Nom',coPhone:'Téléphone',coAddr:'Adresse',coPay:'Mode de paiement',coPayDef:'À la commande',coNote:'Note',coLoc:'Votre localisation',coLocBtn:'Me localiser automatiquement',coLocOk:'Localisation détectée',coLocWait:'Localisation en cours...',coLocErr:'Localisation indisponible — saisissez l\'adresse',coView:'Voir sur la carte',coProof:'Preuve de paiement (image)',coProofBtn:'Joindre la preuve',coSend:'Envoyer via WhatsApp',coNeed:'Entrez le nom et le téléphone',coCustomer:'Client',coItems:'Produits',coLocLabel:'Localisation',coProofNote:'(Preuve de paiement jointe)',coReady:'Commande prête — terminez l\'envoi sur WhatsApp',hello:'Bonjour',helloGuest:'Bienvenue chez ETS SADAGA',yourName:'Votre nom',nameHint:'Entrez votre nom pour un accueil personnalisé.',namePh:'Écrivez votre nom ici',save:'Enregistrer',off:'remise',all:'Tout',out:'Rupture',noProducts:'Aucun produit',bestPrice:'Meilleur prix',addedCart:'Ajouté au panier',cartTitle:'🛒 Panier',cartEmpty:'Votre panier est vide',cartEmptySub:'Parcourez les produits et ajoutez ce qu\'il vous faut',total:'Total',checkoutWa:'Finaliser la commande',clearCart:'Vider le panier',menuGuest:'Visiteur',mOrders:'Mes commandes',mAbout:'À propos',mTerms:'Conditions d\'utilisation',mSupport:'Support',mAdmin:'Espace admin',voiceNo:'Recherche vocale non supportée sur ce navigateur',listening:'À l\'écoute...',orderMsg:'Nouvelle commande — ETS SADAGA',orderTotal:'Total',waNotSet:'Numéro WhatsApp non configuré',aboutDef:'ETS SADAGA pour le commerce général — l\'une des principales entreprises du commerce général dans la région. Nous offrons une large gamme de produits à des prix compétitifs et de haute qualité.',termsDef:'• Les prix peuvent varier selon la disponibilité.\n• Les commandes sont confirmées via WhatsApp avant livraison.\n• Veuillez vérifier les produits à la réception.\n• Pour toute question, contactez le support.',contactWa:'Contacter via WhatsApp',close:'Fermer',ok:'OK',mRegister:'Mes informations',mStatement:'Mon relevé de compte',mLogout:'Déconnexion',mLogin:'Se connecter',accMy:'Mon compte',accVerified:'Vérifié',accUnverified:'Non vérifié',accStmtBtn:'Mon relevé (dettes et paiements)',accMore:'Plus d\'options',accAdmin:'Espace admin / employé',accPrompt:'Inscrivez-vous ou connectez-vous pour profiter du suivi et des offres.',accLoginExisting:'Se connecter avec un compte existant',balOwe:'Vous devez',balCredit:'Votre crédit',balLabel:'Solde',ptsBalance:'Solde',ptsHint:'Gagnez des points à chaque achat et échangez-les contre une remise',blockedMsg:'⛔ Votre compte est bloqué pour informations/preuves de paiement incorrectes répétées. Contactez le magasin.'}
 };
 let LANG=DB.settings.lang||'ar';
 function t(k){return (L[LANG]&&L[LANG][k])||L.ar[k]||k;}
@@ -6133,11 +6134,11 @@ function catLabel(c){return LANG==='fr'?(CAT_FR[c]||c):c;}
 function applyLang(){
   document.documentElement.lang=LANG;
   document.documentElement.dir=LANG==='fr'?'ltr':'rtl';
+  renderStore();
   document.querySelectorAll('[data-i18n]').forEach(el=>{el.textContent=t(el.getAttribute('data-i18n'));});
   document.querySelectorAll('[data-i18n-ph]').forEach(el=>{el.placeholder=t(el.getAttribute('data-i18n-ph'));});
   const lb=document.getElementById('langBtn');if(lb)lb.textContent=LANG==='fr'?'ع':'FR';
   if(typeof updateMenuIdentity==='function')updateMenuIdentity();
-  renderStore();
   if(!window._welcomed){window._welcomed=true;setTimeout(()=>toast(greetMsg()),500);}
 }
 function greetMsg(){const n=DB.settings.guestName;return n?`${t('hello')} ${n}`:t('helloGuest');}
@@ -6574,6 +6575,7 @@ function setPayMode(m){_payMode=m;if(m==='cod')_payApp='';renderPaymentStep(wind
 function setPayApp(id){_payApp=id;renderPaymentStep(window._coCtx);}
 function loyUsable(ctx){if(!loyOn())return 0;const my=myPointsNow();const byTot=Math.floor((ctx.grandTotal||0)/loyRedeemVal());return Math.max(0,Math.min(my,byTot));}
 function setPayPts(){const ctx=window._coCtx;let n=parseFloat(val('co_pts'))||0;n=Math.max(0,Math.min(Math.floor(n),loyUsable(ctx)));_payPts=n;renderPaymentStep(ctx);}
+function useAllPts(){const ctx=window._coCtx;_payPts=loyUsable(ctx);renderPaymentStep(ctx);}
 function clrPayPts(){_payPts=0;renderPaymentStep(window._coCtx);}
 function renderPaymentStep(ctx){
   const apps=payApps();const appBox=apps.find(b=>b.id===_payApp);
@@ -6587,8 +6589,9 @@ function renderPaymentStep(ctx){
       <div style="font-weight:800;font-size:13px;color:var(--primary-d)">لديك ${money(myPointsNow())} ${esc(loyName())} — استبدلها بخصم</div>
       <div style="display:flex;gap:6px;margin-top:8px">
         <input class="inp" id="co_pts" type="number" inputmode="numeric" placeholder="عدد النقاط (حتى ${money(usable)})" value="${_payPts||''}" style="flex:1">
-        <button class="btn btn-sm btn-primary" onclick="setPayPts()">تطبيق</button>
-        ${_payPts>0?`<button class="btn btn-sm" onclick="clrPayPts()">إلغاء</button>`:''}
+        <button class="btn btn-sm" onclick="useAllPts()" title="استخدام كل النقاط">${LANG==='fr'?'Tout':'الكل'}</button>
+        <button class="btn btn-sm btn-primary" onclick="setPayPts()">${LANG==='fr'?'Appliquer':'تطبيق'}</button>
+        ${_payPts>0?`<button class="btn btn-sm" onclick="clrPayPts()">${LANG==='fr'?'Annuler':'إلغاء'}</button>`:''}
       </div>
       ${_payPts>0?`<div style="font-size:12px;color:var(--success);font-weight:700;margin-top:6px">خصم ${money(disc)} ${CUR()} (${money(_payPts)} ${esc(loyName())})</div>`:''}
     </div>`:'';
@@ -6796,17 +6799,17 @@ function openStoreMenu(){
   const el=document.getElementById('menuAuth');
   if(el){const v=getVisitor();const reg=!!(v&&(v.id||v.phone));
     const acc=`<button class="menu-item" onclick="closeStoreMenu();visitorRegister()">
-        <span class="mlabel">سجّل بياناتك</span>
+        <span class="mlabel">${t('mRegister')}</span>
         <span class="micon" style="background:#E5EDFF;color:#1D4ED8"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><circle cx="12" cy="8" r="3.4"/><path d="M5 20a7 7 0 0 1 14 0"/></svg></span></button>`;
     const stmt=reg?`<button class="menu-item" onclick="closeStoreMenu();myAccountStatement()">
-        <span class="mlabel">كشف حسابي</span>
+        <span class="mlabel">${t('mStatement')}</span>
         <span class="micon" style="background:#FEF3E2;color:#C2710C"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M9 17v-6M12 17V7M15 17v-3M4 4h16v16H4z"/></svg></span></button>`:'';
     const auth=reg
       ?`<button class="menu-item" onclick="closeStoreMenu();customerLogout()">
-        <span class="mlabel">تسجيل الخروج</span>
+        <span class="mlabel">${t('mLogout')}</span>
         <span class="micon" style="background:#FEE2E2;color:#B91C1C"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M14 17l5-5-5-5M19 12H9"/></svg></span></button>`
       :`<button class="menu-item" onclick="closeStoreMenu();customerLogin()">
-        <span class="mlabel">تسجيل الدخول بحساب</span>
+        <span class="mlabel">${t('mLogin')}</span>
         <span class="micon" style="background:#DCFCE7;color:#15803D"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5M15 12H3"/></svg></span></button>`;
     el.innerHTML=(reg?'':acc)+stmt+auth;
   }
@@ -6997,8 +7000,8 @@ function renderMenuBal(){
   const bal=Number(window._myBalance)||0;
   const show=localStorage.getItem('sadaqa_hide_bal')!=='1';
   eye.textContent=show?'👁':'🙈';
-  if(!show){bEl.innerHTML='الرصيد: <b>••••</b>';return;}
-  const txt=bal>0?('عليك: <b>'+m(bal)+'</b>'):bal<0?('لك (رصيد): <b>'+m(-bal)+'</b>'):'رصيدك: <b>0</b>';
+  if(!show){bEl.innerHTML=t('balLabel')+': <b>••••</b>';return;}
+  const txt=bal>0?(t('balOwe')+': <b>'+m(bal)+'</b>'):bal<0?(t('balCredit')+': <b>'+m(-bal)+'</b>'):(t('balLabel')+': <b>0</b>');
   bEl.innerHTML=txt;
 }
 function toggleMenuBal(){
@@ -7263,27 +7266,27 @@ function openMyAccountFull(){
 }
 function openAccountSheet(){
   const v=getVisitor();const reg=!!(v&&v.id);
-  modal({title:'حسابي',size:'sm',body:`
+  modal({title:t('accMy'),size:'sm',body:`
     ${reg?`<div style="text-align:center;margin-bottom:14px">
         <div style="width:66px;height:66px;border-radius:50%;margin:0 auto 8px;background:var(--primary-soft) center/cover no-repeat;${v.image?`background-image:url(${v.image})`:''};display:grid;place-items:center;color:var(--primary-d);border:2px solid var(--line)">${v.image?'':svg(I.people,26)}</div>
-        <b style="font-size:15px">${esc(v.name)}</b> ${v.verified?'<span style="color:#16a34a;font-weight:700">✔ موثّق</span>':'<span style="color:#f59e0b;font-size:12px;font-weight:600">(غير موثّق)</span>'}
+        <b style="font-size:15px">${esc(v.name)}</b> ${v.verified?'<span style="color:#16a34a;font-weight:700">✔ '+t('accVerified')+'</span>':'<span style="color:#f59e0b;font-size:12px;font-weight:600">('+t('accUnverified')+')</span>'}
         <div class="muted" style="font-size:12px;margin-top:2px" dir="ltr">+${esc(v.cc||'222')} ${esc(v.phone||'')}</div>
-        ${window._acctBlocked?`<div style="background:#FEE2E2;color:#B91C1C;border-radius:10px;padding:9px;margin-top:10px;font-size:12.5px;font-weight:700">⛔ حسابك محظور بسبب معلومات/إثباتات دفع غير صحيحة متكرّرة. تواصل مع المتجر لرفع الحظر.</div>`:''}
-      </div>`:`<p class="muted" style="font-size:13px;margin-bottom:14px;text-align:center;line-height:1.8">سجّل حسابك أو ادخل بحسابك للاستفادة من المتابعة والعروض.</p>`}
+        ${window._acctBlocked?`<div style="background:#FEE2E2;color:#B91C1C;border-radius:10px;padding:9px;margin-top:10px;font-size:12.5px;font-weight:700">${t('blockedMsg')}</div>`:''}
+      </div>`:`<p class="muted" style="font-size:13px;margin-bottom:14px;text-align:center;line-height:1.8">${t('accPrompt')}</p>`}
     <div style="display:flex;flex-direction:column;gap:10px">
-      <button class="btn btn-primary" style="justify-content:center" onclick="closeModal();visitorRegister()">${svg(reg?I.people:I.people,16)} ${reg?'حسابي':'سجّل بياناتك'}</button>
-      ${reg?`<button class="btn" style="justify-content:center" onclick="closeModal();myAccountStatement()">${svg(I.report,16)} كشف حسابي (الديون والمدفوعات)</button>`:''}
+      <button class="btn btn-primary" style="justify-content:center" onclick="closeModal();visitorRegister()">${svg(I.people,16)} ${reg?t('accMy'):t('mRegister')}</button>
+      ${reg?`<button class="btn" style="justify-content:center" onclick="closeModal();myAccountStatement()">${svg(I.report,16)} ${t('accStmtBtn')}</button>`:''}
       ${reg&&loyOn()?`<div style="background:linear-gradient(135deg,var(--primary),var(--primary-d));color:#fff;border-radius:14px;padding:14px;text-align:center">
-        <div style="font-size:12px;opacity:.9">رصيد ${esc(loyName())}</div>
+        <div style="font-size:12px;opacity:.9">${t('ptsBalance')} ${esc(loyName())}</div>
         <div id="myLoyPts" style="font-size:30px;font-weight:800;line-height:1.1">${money(myPointsNow())}</div>
-        <div style="font-size:11px;opacity:.9;margin-top:3px">تكسبها مع كل شراء وتستبدلها بخصم (النقطة = ${money(loyRedeemVal())} ${CUR()})</div>
+        <div style="font-size:11px;opacity:.9;margin-top:3px">${t('ptsHint')}</div>
       </div>`:''}
       ${reg
-        ?`<button class="btn" style="justify-content:center;color:var(--danger)" onclick="closeModal();customerLogout()">تسجيل الخروج</button>`
-        :`<button class="btn" style="justify-content:center" onclick="closeModal();customerLogin()">تسجيل الدخول بحساب موجود</button>`}
-      <button class="btn btn-ghost" style="justify-content:center" onclick="closeModal();openStoreMenu()">المزيد من الخيارات</button>
+        ?`<button class="btn" style="justify-content:center;color:var(--danger)" onclick="closeModal();customerLogout()">${t('mLogout')}</button>`
+        :`<button class="btn" style="justify-content:center" onclick="closeModal();customerLogin()">${t('accLoginExisting')}</button>`}
+      <button class="btn btn-ghost" style="justify-content:center" onclick="closeModal();openStoreMenu()">${t('accMore')}</button>
       ${reg?'':`<div style="border-top:1px solid var(--line);margin:4px 0 2px"></div>
-      <button class="btn" style="justify-content:center" onclick="closeModal();adminLogin()">${svg(I.lock||I.user||I.people,15)} دخول كمدير / موظّف</button>`}
+      <button class="btn" style="justify-content:center" onclick="closeModal();adminLogin()">${svg(I.lock||I.user||I.people,15)} ${t('accAdmin')}</button>`}
     </div>`,
     actions:[{label:t('close'),fn:()=>true}]});
   if(reg&&loyOn()){try{const pr=cloudGetReg(v.id);if(pr&&pr.then)pr.then(rg=>{if(rg&&rg.points!=null){_myPoints=Number(rg.points)||0;const el=document.getElementById('myLoyPts');if(el)el.textContent=money(_myPoints);}}).catch(()=>{});}catch(e){}}
