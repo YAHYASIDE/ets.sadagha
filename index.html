@@ -734,14 +734,7 @@ html.dark .pd-thumb{background-color:#1B2742}
       <div class="menu-name">زائر</div>
     </div>
     <div class="menu-list">
-      <button class="menu-item" onclick="closeStoreMenu();visitorRegister()">
-        <span class="mlabel">سجّل بياناتك / حسابي</span>
-        <span class="micon" style="background:#E5EDFF;color:#1D4ED8"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><circle cx="12" cy="8" r="3.4"/><path d="M5 20a7 7 0 0 1 14 0"/></svg></span>
-      </button>
-      <button class="menu-item" onclick="closeStoreMenu();customerLogin()">
-        <span class="mlabel">تسجيل الدخول بحساب</span>
-        <span class="micon" style="background:#DCFCE7;color:#15803D"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5M15 12H3"/></svg></span>
-      </button>
+      <div id="menuAuth"></div>
       <button class="menu-item" onclick="closeStoreMenu();enableNotifications()">
         <span class="mlabel">تفعيل الإشعارات</span>
         <span class="micon" style="background:#FEF3C7;color:#B45309"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg></span>
@@ -932,20 +925,30 @@ let MSG=null;
 try{ if(window.firebase&&firebase.messaging&&firebase.messaging.isSupported&&firebase.messaging.isSupported()){ MSG=firebase.messaging(); } }catch(e){console.warn('messaging',e);}
 function notifSupported(){return !!(MSG&&('serviceWorker' in navigator)&&('Notification' in window));}
 function enableNotifications(){
-  if(!notifSupported()){toast('متصفّحك لا يدعم الإشعارات. على آيفون أضف الموقع إلى الشاشة الرئيسية أولاً.','err');return;}
+  if(!notifSupported()){toast('متصفّحك لا يدعم الإشعارات. على آيفون: أضِف الموقع إلى الشاشة الرئيسية ثم فعّلها من داخله.','err');return;}
   if(!VAPID_KEY){toast('لم تُضبط الإشعارات بعد (مفتاح Web Push)','err');return;}
-  if(Notification.permission==='denied'){toast('الإشعارات محظورة من إعدادات المتصفّح — فعّلها يدوياً','err');return;}
-  Notification.requestPermission().then(perm=>{
-    if(perm!=='granted'){toast('لم تُمنح صلاحية الإشعارات','err');return;}
+  if(Notification.permission==='granted'){registerPush();return;}
+  if(Notification.permission==='denied'){toast('الإشعارات محظورة في المتصفّح. افتح إعدادات الموقع (رمز القفل بجانب العنوان) واسمح بالإشعارات ثم أعد المحاولة.','err');return;}
+  let done=false;const handle=perm=>{if(done)return;done=true;
+    if(perm==='granted'){registerPush();}
+    else if(perm==='denied'){toast('رفضت الإشعارات. يمكنك تفعيلها لاحقاً من إعدادات الموقع في المتصفّح.','err');}
+    else{toast('لم تُكمل السماح. اضغط الزرّ ثانيةً واختر «السماح/Allow».','err');}
+  };
+  try{const r=Notification.requestPermission(handle);if(r&&r.then)r.then(handle).catch(()=>toast('تعذّر طلب صلاحية الإشعارات','err'));}
+  catch(e){toast('تعذّر طلب صلاحية الإشعارات','err');}
+}
+function registerPush(){
+  try{
     navigator.serviceWorker.register('firebase-messaging-sw.js').then(reg=>{
+      if(typeof MSG==='undefined'||!MSG){toast('خدمة الإشعارات غير مهيّأة — تحقّق من الإنترنت','err');return;}
       MSG.getToken({vapidKey:VAPID_KEY,serviceWorkerRegistration:reg}).then(token=>{
         if(!token){toast('تعذّر إنشاء رمز الإشعار','err');return;}
         if(FS){const v=getVisitor()||{};FS.collection('pushtokens').doc(token).set({token,name:(v&&v.name)||'',phone:(v&&v.phone)||'',date:new Date().toISOString()}).catch(()=>{});}
         try{localStorage.setItem('sadaqa_push','1');}catch(e){}
         toast('تم تفعيل الإشعارات ✔','ok');
-      }).catch(e=>{toast('تعذّر التفعيل','err');console.warn(e);});
+      }).catch(e=>{toast('تعذّر التفعيل — حاول مجدداً','err');console.warn('getToken',e);});
     }).catch(()=>toast('تعذّر تسجيل خدمة الإشعارات','err'));
-  });
+  }catch(e){toast('تعذّر تفعيل الإشعارات','err');}
 }
 function showInAppNotif(title,body){
   let el=document.getElementById('inAppNotif');if(el)el.remove();
@@ -1039,6 +1042,7 @@ function cloudSyncNow(){
   if(!FS){toast('السحابة غير متاحة','err');return;}
   if(!DB.settings.cloudSync){toast('فعّل المزامنة من الإعدادات أولاً','err');return;}
   cloudPutLedger(true);cloudPutMeta();DB.products.forEach(p=>cloudPutProduct(p));
+  try{(DB.customers||[]).forEach(c=>{if(c&&c.phone)syncCustToReg(c);});}catch(e){}
   toast('تمت المزامنة','ok');
 }
 /* تسجيلات الزبائن من المتجر (مجموعة مستقلة في السحابة) */
@@ -3709,7 +3713,7 @@ function vchPartyName(v){
   if(v.partyType==='supplier'){const s=DB.suppliers.find(x=>x.id===v.partyId);return s?s.name:(v.partyName||'مورد');}
   return v.partyName||'حساب آخر';
 }
-const APP_BUILD='يومية-جديدة · 20/06 #65';
+const APP_BUILD='يومية-جديدة · 20/06 #67';
 let jrnDay=null,jrnBox='',jrnQ='';
 function journalEntries(day,boxId){
   const E=[];const sameDay=d=>(d||'').slice(0,10)===day;
@@ -6335,7 +6339,7 @@ function openPaymentStep(ctx){
 }
 function setPayMode(m){_payMode=m;if(m==='cod')_payApp='';renderPaymentStep(window._coCtx);}
 function setPayApp(id){_payApp=id;renderPaymentStep(window._coCtx);}
-function loyUsable(ctx){if(!loyOn())return 0;const my=loyPoints((getVisitor()||{}).id);const byTot=Math.floor((ctx.grandTotal||0)/loyRedeemVal());return Math.max(0,Math.min(my,byTot));}
+function loyUsable(ctx){if(!loyOn())return 0;const my=myPointsNow();const byTot=Math.floor((ctx.grandTotal||0)/loyRedeemVal());return Math.max(0,Math.min(my,byTot));}
 function setPayPts(){const ctx=window._coCtx;let n=parseFloat(val('co_pts'))||0;n=Math.max(0,Math.min(Math.floor(n),loyUsable(ctx)));_payPts=n;renderPaymentStep(ctx);}
 function clrPayPts(){_payPts=0;renderPaymentStep(window._coCtx);}
 function renderPaymentStep(ctx){
@@ -6344,7 +6348,7 @@ function renderPaymentStep(ctx){
   const usable=loyUsable(ctx);
   const loyBox=(loyOn()&&usable>0)?`
     <div style="border:1px solid var(--primary);border-radius:14px;padding:11px 13px;margin-bottom:12px;background:var(--primary-soft)">
-      <div style="font-weight:800;font-size:13px;color:var(--primary-d)">لديك ${money(loyPoints((getVisitor()||{}).id))} ${esc(loyName())} — استبدلها بخصم</div>
+      <div style="font-weight:800;font-size:13px;color:var(--primary-d)">لديك ${money(myPointsNow())} ${esc(loyName())} — استبدلها بخصم</div>
       <div style="display:flex;gap:6px;margin-top:8px">
         <input class="inp" id="co_pts" type="number" inputmode="numeric" placeholder="عدد النقاط (حتى ${money(usable)})" value="${_payPts||''}" style="flex:1">
         <button class="btn btn-sm btn-primary" onclick="setPayPts()">تطبيق</button>
@@ -6518,6 +6522,23 @@ function openWhatsApp(){
 /* ---- القائمة المنسدلة ---- */
 function openStoreMenu(){
   updateMenuIdentity();
+  const el=document.getElementById('menuAuth');
+  if(el){const v=getVisitor();const reg=!!(v&&v.id);
+    const acc=`<button class="menu-item" onclick="closeStoreMenu();visitorRegister()">
+        <span class="mlabel">${reg?'حسابي':'سجّل بياناتك'}</span>
+        <span class="micon" style="background:#E5EDFF;color:#1D4ED8"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><circle cx="12" cy="8" r="3.4"/><path d="M5 20a7 7 0 0 1 14 0"/></svg></span></button>`;
+    const stmt=reg?`<button class="menu-item" onclick="closeStoreMenu();myAccountStatement()">
+        <span class="mlabel">كشف حسابي</span>
+        <span class="micon" style="background:#FEF3E2;color:#C2710C"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M9 17v-6M12 17V7M15 17v-3M4 4h16v16H4z"/></svg></span></button>`:'';
+    const auth=reg
+      ?`<button class="menu-item" onclick="closeStoreMenu();customerLogout()">
+        <span class="mlabel">تسجيل الخروج</span>
+        <span class="micon" style="background:#FEE2E2;color:#B91C1C"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M14 17l5-5-5-5M19 12H9"/></svg></span></button>`
+      :`<button class="menu-item" onclick="closeStoreMenu();customerLogin()">
+        <span class="mlabel">تسجيل الدخول بحساب</span>
+        <span class="micon" style="background:#DCFCE7;color:#15803D"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5M15 12H3"/></svg></span></button>`;
+    el.innerHTML=acc+stmt+auth;
+  }
   document.getElementById('storeMenu').classList.add('open');
 }
 let _cfProf='',_cfCoords=null,_cfStoreKind='craft';
@@ -6831,7 +6852,7 @@ function myAccountStatement(){
   const done=reg=>{
     const entries=(reg&&Array.isArray(reg.statement))?reg.statement:[];
     const bal=(reg&&reg.balance!=null)?Number(reg.balance)||0:0;
-    if(entries.length){renderMyStmt(v,entries,bal);return;}
+    if(entries.length||(reg&&reg.balance!=null)){renderMyStmt(v,entries,bal);return;}
     // احتياطي: من الطلبات
     const ords=myOrders();const rows=[];let totBuy=0,totPaid=0,b=0;
     const ST={pending:'بانتظار',delivering:'قيد التوصيل',delivered:'تم التسليم',rejected:'مرفوض'};
