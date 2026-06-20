@@ -1542,10 +1542,38 @@ function pendingRegCount(){return (DB.registrations||[]).filter(r=>!r.verified).
 function pendingOrderCount(){return (DB.orders||[]).filter(o=>(o.status||'pending')==='pending').length;}
 const ORDER_STAGES={pending:{t:'قيد المراجعة',bg:'#FEF3C7',fg:'#92400E',ic:'⏳'},delivering:{t:'جاري التوصيل',bg:'#DBEAFE',fg:'#1E40AF',ic:'🚚'},delivered:{t:'تم التسليم',bg:'#DCFCE7',fg:'#166534',ic:'✅'},rejected:{t:'ملغى',bg:'#FEE2E2',fg:'#B91C1C',ic:'✖'}};
 function orderStage(o){return ORDER_STAGES[(o&&o.status)||'pending']||ORDER_STAGES.pending;}
-function setOrderStatus(id,st){const o=(DB.orders||[]).find(x=>x.id===id);if(!o)return;o.status=st;cloudSetOrder(id,{status:st}).catch(()=>{});save();updateOrderBadge();
+function setOrderStatus(id,st){const o=(DB.orders||[]).find(x=>x.id===id);if(!o)return;
+  if((st==='delivering'||st==='delivered')&&!o.saleId){toast('حوّل الطلب إلى فاتورة أولاً، ثم غيّر الحالة','err');return;}
+  o.status=st;cloudSetOrder(id,{status:st}).catch(()=>{});save();updateOrderBadge();
   try{const msg=st==='delivering'?('🚚 طلبك #'+o.no+' في الطريق إليك'):st==='delivered'?('✅ تم تسليم طلبك #'+o.no+' — شكراً لك'):st==='pending'?('⏳ طلبك #'+o.no+' قيد المراجعة'):('تحديث على طلبك #'+o.no);
     if(o.customerId&&typeof custTxn==='function')custTxn(o.customerId,msg);}catch(e){}
   toast('حالة الطلب: '+(ORDER_STAGES[st]?ORDER_STAGES[st].t:st)+' — أُشعِر الزبون','ok');if(current==='orders')renderOrders();}
+function verifyOrderPayment(id){
+  const o=(DB.orders||[]).find(x=>x.id===id);if(!o)return;
+  o.paymentVerified=true;cloudSetOrder(id,{paymentVerified:true}).catch(()=>{});save();
+  try{if(o.customerId&&typeof custTxn==='function')custTxn(o.customerId,'✅ تحقّقنا من دفعتك لطلب #'+o.no+' وهي صحيحة. شكراً لك.');}catch(e){}
+  toast('تم تأكيد الدفع وإشعار الزبون','ok');if(current==='orders')renderOrders();
+}
+function markOrderFraud(id){
+  const o=(DB.orders||[]).find(x=>x.id===id);if(!o)return;
+  confirmDlg('تحديد الطلب كاحتيالي؟','سيُرفض الطلب ويُسجَّل إنذار احتيال على الزبون. بعد 5 إنذارات يُحظر حسابه ولا يمكنه إرسال طلبات.',()=>{
+    o.status='rejected';o.cancelledBy='store';o.fraud=true;o.rejectReason='إثبات دفع أو معلومات غير صحيحة';o.cancelledAt=new Date().toISOString();
+    cloudSetOrder(id,{status:'rejected',fraud:true,rejectReason:o.rejectReason,cancelledBy:'store'}).catch(()=>{});
+    save();updateOrderBadge();if(current==='orders')renderOrders();
+    if(o.customerId){const key=o.customerId;
+      const apply=reg=>{
+        const strikes=((reg&&reg.fraudStrikes)||0)+1;const blocked=strikes>=5;
+        const patch={fraudStrikes:strikes};if(blocked)patch.blocked=true;
+        patch.lastTxn={id:uid('tx'),date:new Date().toISOString(),text:(blocked?('⛔ تم حظر حسابك بعد '+strikes+' محاولات بمعلومات غير صحيحة. تواصل مع المتجر.'):('🚩 رُفض طلبك #'+o.no+' بسبب إثبات/معلومات غير صحيحة ('+strikes+'/5).'))};
+        try{cloudSetReg(key,patch);}catch(e){}
+        toast(blocked?('رُفض الطلب وحُظر الزبون (5/5)'):('رُفض الطلب · إنذار احتيال ('+strikes+'/5)'),'ok');
+      };
+      let p=null;try{p=cloudGetReg(key);}catch(e){}
+      if(p&&p.then)p.then(apply).catch(()=>apply(null));else apply(null);
+    }
+  });
+}
+function unblockCustomerReg(key){if(!key)return;try{cloudSetReg(key,{blocked:false,fraudStrikes:0,lastTxn:{id:uid('tx'),date:new Date().toISOString(),text:'✅ تم رفع الحظر عن حسابك. يمكنك الطلب من جديد.'}});}catch(e){}toast('تم رفع الحظر','ok');}
 function navBadge(id){
   let n=0,cls='';
   if(id==='regs'){n=pendingRegCount();cls='reg-badge';}
@@ -3739,6 +3767,7 @@ function payDebtSheet(prefill){
 function cpSelApp(id){_cpApp=id;(payApps()||[]).forEach(a=>{const el=document.getElementById('cpapp_'+a.id);if(el)el.className='btn'+(a.id===id?' btn-primary':'');});const b=boxes().find(x=>x.id===id);const pn=document.getElementById('cp_paynum');if(pn)pn.innerHTML=(b&&(b.payNum||DB.settings.payNumber))?('حوّل إلى الرقم: <b dir="ltr">'+esc(b.payNum||DB.settings.payNumber)+'</b>'):'';}
 function cpPickProof(inp){const f=inp.files&&inp.files[0];if(!f)return;downscaleImage(f,d=>{_cpProof=d;const pv=document.getElementById('cp_proofPrev');if(pv)pv.innerHTML='<img src="'+d+'" style="max-width:100%;border-radius:8px">';});}
 function submitCustPayment(){
+  if(window._acctBlocked){toast('حسابك محظور — تواصل مع المتجر.','err');return false;}
   const v=getVisitor()||{};const amt=parseFloat(val('cp_amt'))||0;
   if(amt<=0){toast('أدخل مبلغاً صحيحاً','err');return false;}
   if(!_cpProof){toast('أرفق صورة إثبات الدفع','err');return false;}
@@ -3828,7 +3857,7 @@ function vchPartyName(v){
   if(v.partyType==='supplier'){const s=DB.suppliers.find(x=>x.id===v.partyId);return s?s.name:(v.partyName||'مورد');}
   return v.partyName||'حساب آخر';
 }
-const APP_BUILD='يومية-جديدة · 20/06 #75';
+const APP_BUILD='يومية-جديدة · 20/06 #76';
 let jrnDay=null,jrnBox='',jrnQ='';
 function journalEntries(day,boxId){
   const E=[];const sameDay=d=>(d||'').slice(0,10)===day;
@@ -4922,7 +4951,7 @@ function renderOrders(list){
     const stepPill=(k)=>`<button class="btn btn-sm" style="${st===k?`background:${ORDER_STAGES[k].fg};color:#fff;border-color:${ORDER_STAGES[k].fg}`:''};font-size:11.5px;padding:6px 9px" onclick="setOrderStatus('${o.id}','${k}')">${ORDER_STAGES[k].ic} ${ORDER_STAGES[k].t}</button>`;
     return `<div style="border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px;${st==='delivered'?'opacity:.85':''}${isCancel?'opacity:.7;background:#fef2f2':''}">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap">
-        <div><b>#${o.no} · ${esc(o.name)}</b> <span class="badge" style="background:${stg.bg};color:${stg.fg}">${stg.ic} ${isCancel?orderCancelLabel(o):stg.t}</span>${o.saleId?' <span class="badge b-ok">مفوتر</span>':''}<div class="muted" style="font-size:12px" dir="ltr">+${esc(o.cc||'222')} ${esc(o.phone||'')}</div></div>
+        <div><b>#${o.no} · ${esc(o.name)}</b> <span class="badge" style="background:${stg.bg};color:${stg.fg}">${stg.ic} ${isCancel?orderCancelLabel(o):stg.t}</span>${o.saleId?' <span class="badge b-ok">مفوتر</span>':''}${o.fraud?' <span class="badge" style="background:#FEE2E2;color:#B91C1C">🚩 احتيالي</span>':''}${o.paymentVerified?' <span class="badge" style="background:#DCFCE7;color:#15803D">✔ دفع موثّق</span>':''}<div class="muted" style="font-size:12px" dir="ltr">+${esc(o.cc||'222')} ${esc(o.phone||'')}</div></div>
         <div style="text-align:end"><b style="font-size:16px">${money(o.total)} ${CUR()}</b><div class="muted" style="font-size:11px">${fmtDateTime(o.date)}</div></div>
       </div>
       <div style="font-size:12.5px;margin-top:8px">${o.items.map(l=>`${esc(l.name)} ×${l.qty}`).join(' · ')}</div>
@@ -4937,6 +4966,8 @@ function renderOrders(list){
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
         ${o.saleId?`<button class="btn btn-sm" onclick="(function(){var s=DB.sales.find(x=>x.id==='${o.saleId}');if(s)showInvoice(s);})()">عرض الفاتورة</button>`:(!isCancel?`<button class="btn btn-sm btn-primary" onclick="convertOrder('${o.id}')">${svg(I.check,13)} تحويل إلى فاتورة</button>`:'')}
         <button class="btn btn-sm" style="color:#16a34a" onclick="orderWa('${o.id}')">${svg(I.wa,13)} واتساب</button>
+        ${(o.proof&&!isCancel&&!o.paymentVerified)?`<button class="btn btn-sm" style="color:#15803D;border-color:#bbf7d0" onclick="verifyOrderPayment('${o.id}')">✔ تأكيد الدفع</button>`:''}
+        ${!isCancel?`<button class="btn btn-sm" style="color:#b91c1c;border-color:#fecaca" onclick="markOrderFraud('${o.id}')">🚩 احتيالي</button>`:''}
         ${!isCancel?`<button class="btn btn-sm" style="color:#b91c1c" onclick="cancelOrderStore('${o.id}')">${svg(I.trash,13)} إلغاء الطلب</button>`:`<button class="btn btn-sm" onclick="setOrderStatus('${o.id}','pending')">إعادة تفعيل</button>`}
         <button class="btn btn-icon btn-ghost btn-sm" title="حذف نهائي" onclick="delOrder('${o.id}')">${svg(I.trash,15)}</button>
       </div>
@@ -5071,9 +5102,10 @@ function regsTable(list){
       <td class="t-num" dir="ltr">+${esc(r.cc||'222')} ${esc(r.phone||'')}</td>
       <td class="t-num">${esc(r.code||'—')}</td>
       <td class="muted" style="font-size:11.5px">${fmtDateTime(r.date)}</td>
-      <td>${r.verified?'<span class="badge b-ok">مؤكَّد</span>':'<span class="badge" style="background:#FEF3C7;color:#92400E">بانتظار</span>'}${r.loginStatus==='pending'?'<br><span class="badge" style="background:#DBEAFE;color:#1E40AF;font-size:9px;margin-top:3px">🔑 طلب دخول</span>':''}</td>
+      <td>${r.verified?'<span class="badge b-ok">مؤكَّد</span>':'<span class="badge" style="background:#FEF3C7;color:#92400E">بانتظار</span>'}${r.loginStatus==='pending'?'<br><span class="badge" style="background:#DBEAFE;color:#1E40AF;font-size:9px;margin-top:3px">🔑 طلب دخول</span>':''}${r.blocked?'<br><span class="badge" style="background:#FEE2E2;color:#B91C1C;font-size:9px;margin-top:3px">⛔ محظور</span>':(r.fraudStrikes?('<br><span class="badge" style="background:#FEF3C7;color:#92400E;font-size:9px;margin-top:3px">🚩 '+r.fraudStrikes+'/5</span>'):'')}</td>
       <td style="white-space:nowrap;text-align:end">
         ${r.loginStatus==='pending'?`<button class="btn btn-sm" style="background:#16a34a;color:#fff;border-color:#16a34a" onclick="sendLoginCodeToCust('${r.id}')">${svg(I.wa,13)} إرسال رمز الدخول</button>`:''}
+        ${r.blocked?`<button class="btn btn-sm" style="color:#15803D;border-color:#bbf7d0" onclick="unblockCustomerReg('${r.id}');regRerender()">رفع الحظر</button>`:''}
         ${r.verified?'':`<button class="btn btn-sm btn-primary" onclick="regVerify('${r.id}')">${svg(I.check,13)} تأكيد</button>`}
         <button class="btn btn-icon btn-ghost btn-sm" title="إرسال كود عبر واتساب" style="color:#16a34a" onclick="regSendCode('${r.id}')">${svg(I.wa,15)}</button>
         <button class="btn btn-icon btn-ghost btn-sm" title="إضافة كزبون" onclick="regToCustomer('${r.id}')">${svg(I.plus,15)}</button>
@@ -6520,6 +6552,7 @@ function renderPaymentStep(ctx){
     actions:[{label:'إكمال الطلب',primary:true,icon:I.check,fn:()=>submitOrder(ctx)},{label:t('close'),fn:()=>true}]});
 }
 function submitOrder(ctx){
+  if(window._acctBlocked){toast('حسابك محظور بسبب معلومات غير صحيحة متكرّرة — لا يمكنك إرسال طلبات. تواصل مع المتجر.','err');return false;}
   const ptsUsed=Math.max(0,Math.min(_payPts|0,loyUsable(ctx)));const ptsDisc=ptsUsed*loyRedeemVal();
   const effTotal=Math.max(0,ctx.grandTotal-ptsDisc);
   let payMode=_payMode,deposit=0,appBox=null,payNum='';
@@ -6870,6 +6903,7 @@ function watchAccount(){
   try{window._accWatch=FS.collection('registrations').doc(String(v.id)).onSnapshot(d=>{
     const reg=d&&d.exists?d.data():null;if(!reg)return;
     if(reg.deleted){accountDeletedCleanup();return;}
+    window._acctBlocked=!!reg.blocked;window._fraudStrikes=Number(reg.fraudStrikes)||0;
     if(reg.points!=null){_myPoints=Number(reg.points)||0;const el=document.getElementById('myLoyPts');if(el)el.textContent=money(_myPoints);}
     if(reg.lastTxn&&reg.lastTxn.id){const seen=localStorage.getItem('sadaqa_seen_txn')||'';
       if(reg.lastTxn.id!==seen){localStorage.setItem('sadaqa_seen_txn',reg.lastTxn.id);
@@ -7046,6 +7080,7 @@ function openAccountSheet(){
         <div style="width:66px;height:66px;border-radius:50%;margin:0 auto 8px;background:var(--primary-soft) center/cover no-repeat;${v.image?`background-image:url(${v.image})`:''};display:grid;place-items:center;color:var(--primary-d);border:2px solid var(--line)">${v.image?'':svg(I.people,26)}</div>
         <b style="font-size:15px">${esc(v.name)}</b> ${v.verified?'<span style="color:#16a34a;font-weight:700">✔ موثّق</span>':'<span style="color:#f59e0b;font-size:12px;font-weight:600">(غير موثّق)</span>'}
         <div class="muted" style="font-size:12px;margin-top:2px" dir="ltr">+${esc(v.cc||'222')} ${esc(v.phone||'')}</div>
+        ${window._acctBlocked?`<div style="background:#FEE2E2;color:#B91C1C;border-radius:10px;padding:9px;margin-top:10px;font-size:12.5px;font-weight:700">⛔ حسابك محظور بسبب معلومات/إثباتات دفع غير صحيحة متكرّرة. تواصل مع المتجر لرفع الحظر.</div>`:''}
       </div>`:`<p class="muted" style="font-size:13px;margin-bottom:14px;text-align:center;line-height:1.8">سجّل حسابك أو ادخل بحسابك للاستفادة من المتابعة والعروض.</p>`}
     <div style="display:flex;flex-direction:column;gap:10px">
       <button class="btn btn-primary" style="justify-content:center" onclick="closeModal();visitorRegister()">${svg(reg?I.people:I.people,16)} ${reg?'حسابي':'سجّل بياناتك'}</button>
