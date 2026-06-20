@@ -3934,7 +3934,7 @@ function vchPartyName(v){
   if(v.partyType==='supplier'){const s=DB.suppliers.find(x=>x.id===v.partyId);return s?s.name:(v.partyName||'مورد');}
   return v.partyName||'حساب آخر';
 }
-const APP_BUILD='يومية-جديدة · 20/06 #102';
+const APP_BUILD='يومية-جديدة · 20/06 #103';
 let jrnDay=null,jrnBox='',jrnQ='';
 function journalEntries(day,boxId){
   const E=[];const sameDay=d=>(d||'').slice(0,10)===day;
@@ -6688,9 +6688,23 @@ function copyText(txt){txt=String(txt);const done=()=>toast('تم النسخ ✓
 function fallbackCopy(txt,cb){const ta=document.createElement('textarea');ta.value=txt;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.focus();ta.select();try{document.execCommand('copy');cb&&cb();}catch(e){}ta.remove();}
 function payApps(){return boxes().filter(b=>b.type==='app'||b.type==='bank');}
 function prodDeliveryFee(p){return Number(p&&p.deliveryFee)||0;}
+function isCementHeavy(p){
+  if(!p)return false;
+  if(p.cementRule===true)return true;if(p.cementRule===false)return false;
+  const n=((p.name||'')+' '+(p.nameFr||'')+' '+(p.category||'')).toLowerCase();
+  const isCement=n.indexOf('سمنت')>-1||n.indexOf('ciment')>-1||n.indexOf('cement')>-1;
+  if(!isCement)return false;
+  const is5kg=/5\s*(كلغ|كغ|كيلو|kg|kilo)/i.test(n);
+  return !is5kg;
+}
+function cementFee(qty){qty=Number(qty)||0;return qty>0?Math.max(50,qty*10):0;}
 function deliveryFee(){
-  let s=0,any=false,n=0;
-  (CART||[]).forEach(l=>{const p=DB.products.find(x=>x.id===l.id);const fee=prodDeliveryFee(p)||Number(l.deliveryFee)||0;if(fee>0)any=true;s+=fee*(Number(l.qty)||0);n++;});
+  let s=0,n=0;
+  (CART||[]).forEach(l=>{const p=DB.products.find(x=>x.id===l.id);const qty=Number(l.qty)||0;
+    let fee;
+    if(isCementHeavy(p))fee=cementFee(qty);
+    else fee=(prodDeliveryFee(p)||Number(l.deliveryFee)||0)*qty;
+    s+=fee;n++;});
   if(n>5)s=Math.max(s,100);
   if(s>0)return s;
   return Number(DB.settings.delivery)||0;
