@@ -1212,6 +1212,7 @@ if(!DB.boxes||!DB.boxes.length)DB.boxes=[{id:'box1',name:'الصندوق رقم 
 if(!DB._seedApps){DB._seedApps=1;['Bankily','Masrvi','Sedad','Amanty','Click','Orange Money'].forEach(nm=>{const ex=(DB.boxes||[]).some(b=>(b.name||'').toLowerCase()===nm.toLowerCase());if(!ex)DB.boxes.push({id:'boxapp_'+nm.toLowerCase().replace(/[^a-z0-9]/g,''),name:nm,type:'app',start:0});});}
 if(!DB.services)DB.services=[{id:'svc_ship',name:'شحن',price:0},{id:'svc_run',name:'تشغيل',price:0},{id:'svc_load',name:'حمل',price:0}];
 if(!DB.custPays)DB.custPays=[];
+if(!DB._delCusts)DB._delCusts={};
 if(!DB.vouchers)DB.vouchers=[];
 if(!DB.trash)DB.trash=[];
 if(!DB.registrations)DB.registrations=[];
@@ -1996,8 +1997,17 @@ function renameCat(old){
 function delCustomer(id){
   const c=DB.customers.find(x=>x.id===id);if(!c)return;
   const hasBal=Math.abs(c.balance||0)>0.0001;
-  confirmDlg('حذف العميل «'+c.name+'»؟',hasBal?('تنبيه: عليه/له رصيد '+m(Math.abs(c.balance))+'. سيُحذف العميل لكن تبقى فواتيره في السجلّات.'):'سيُحذف من قائمة العملاء.',()=>{
-    DB.customers=DB.customers.filter(x=>x.id!==id);save();closeModal();toast('حُذف العميل','ok');render();
+  confirmDlg('حذف العميل «'+c.name+'»؟',(hasBal?('تنبيه: عليه/له رصيد '+m(Math.abs(c.balance))+'. '):'')+'سيُحذف العميل وحسابه في المتجر؛ لن يَظهر له رصيده ولن يدخل بحسابه. (تبقى فواتيره في سجلّاتك.)',()=>{
+    const ph=digitsOnly(c.phone||''),cc=(c.cc||'222');
+    DB.customers=DB.customers.filter(x=>!(ph&&digitsOnly(x.phone||'')===ph&&(x.cc||'222')===cc)&&x.id!==id);
+    if(c.phone){const key=regKey(cc,c.phone);
+      DB._delCusts=DB._delCusts||{};DB._delCusts[key]=Date.now();
+      DB.registrations=(DB.registrations||[]).filter(r=>regKey(r.cc,r.phone)!==key);
+      if(window._regsCache)window._regsCache=window._regsCache.filter(r=>regKey(r.cc,r.phone)!==key);
+      try{cloudDelReg(key);}catch(e){}
+    }
+    save();closeModal();toast('حُذف العميل وحسابه','ok');render();
+    if(typeof updateRegBadge==='function')updateRegBadge();
   });
 }
 function delSupplier(id){
@@ -3716,7 +3726,7 @@ function vchPartyName(v){
   if(v.partyType==='supplier'){const s=DB.suppliers.find(x=>x.id===v.partyId);return s?s.name:(v.partyName||'مورد');}
   return v.partyName||'حساب آخر';
 }
-const APP_BUILD='يومية-جديدة · 20/06 #72';
+const APP_BUILD='يومية-جديدة · 20/06 #73';
 let jrnDay=null,jrnBox='',jrnQ='';
 function journalEntries(day,boxId){
   const E=[];const sameDay=d=>(d||'').slice(0,10)===day;
@@ -4936,6 +4946,8 @@ function delOrder(id){confirmDlg('حذف الطلب؟','سيُحذف الطلب 
 function orderWa(id){const o=(DB.orders||[]).find(x=>x.id===id);if(!o)return;waOpen(waNum(o.cc,o.phone),'مرحباً '+o.name+'، بخصوص طلبك #'+o.no+' في '+(DB.settings.name||'مؤسسة الصداقة')+'.');}
 function ensureCustomerForReg(r){
   if(!r||!r.phone)return false;
+  const key=regKey(r.cc,r.phone);
+  if(DB._delCusts&&DB._delCusts[key]!=null){const t=DB._delCusts[key];if(!r.date||new Date(r.date).getTime()<=t)return false;delete DB._delCusts[key];}
   const ex=DB.customers.find(c=>digitsOnly(c.phone||'')===digitsOnly(r.phone)&&(c.cc||'222')===(r.cc||'222'));
   if(ex){if(r.name&&ex.fromReg&&ex.name!==r.name){ex.name=r.name;return true;}return false;}
   DB.customers.push({id:uid('c'),name:r.name||('زبون '+r.phone),cc:r.cc||'222',phone:r.phone,phone2:'',fax:'',address:r.address||'',image:r.image||'',balance:0,fromReg:true});
@@ -4985,7 +4997,7 @@ function sendLoginCodeToCust(id){
   waOpen(waNum(r.cc,r.phone),`رمز الدخول إلى حسابك في ${DB.settings.name||'مؤسسة الصداقة'}: ${code}\nصالح 10 دقائق. لا تشاركه مع أحد.`);
   toast('أُرسل رمز الدخول عبر واتساب','ok');
 }
-function regToCustomer(id,silent){const r=regFind(id);if(!r)return;const exists=DB.customers.find(c=>digitsOnly(c.phone)===digitsOnly(r.phone)&&(c.cc||'222')===(r.cc||'222'));if(exists){if(!silent)toast('الزبون موجود مسبقاً في العملاء','ok');return;}DB.customers.push({id:uid('c'),name:r.name,cc:r.cc||'222',phone:r.phone,phone2:'',fax:'',address:'',image:r.image||'',balance:0});save();if(!silent)toast('تمت إضافته إلى العملاء','ok');}
+function regToCustomer(id,silent){const r=regFind(id);if(!r)return;try{if(DB._delCusts){delete DB._delCusts[regKey(r.cc,r.phone)];}}catch(e){}const exists=DB.customers.find(c=>digitsOnly(c.phone)===digitsOnly(r.phone)&&(c.cc||'222')===(r.cc||'222'));if(exists){if(!silent)toast('الزبون موجود مسبقاً في العملاء','ok');return;}DB.customers.push({id:uid('c'),name:r.name,cc:r.cc||'222',phone:r.phone,phone2:'',fax:'',address:'',image:r.image||'',balance:0});save();if(!silent)toast('تمت إضافته إلى العملاء','ok');}
 function regDelete(id){confirmDlg('حذف التسجيل؟','سيُحذف طلب التسجيل نهائياً.',()=>{_regsCache=(_regsCache||[]).filter(r=>r.id!==id);DB.registrations=(DB.registrations||[]).filter(r=>r.id!==id);cloudDelReg(id).catch(()=>{});save();regRerender();if(typeof updateRegBadge==='function')updateRegBadge();toast('تم الحذف','ok');});}
 
 /* ---------- الإشعارات والعروض ---------- */
