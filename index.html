@@ -2251,6 +2251,7 @@ function editProduct(id){
           <div class="field"><label>بلد المنشأ</label><input class="inp" id="f_origin" value="${esc(p.origin||'')}" placeholder="مثال: تركيا"></div>
           <div class="field"><label>تاريخ الصلاحية</label><input class="inp" id="f_exp" type="date" value="${esc(p.expiry||'')}"></div>
           <div class="field"><label>موقع الرف</label><input class="inp" id="f_shelf" value="${esc(p.shelf||'')}" placeholder="مثال: رف A3"></div>
+          <div class="field"><label>رسوم الحمل لهذه المادة (لكل وحدة)</label><input class="inp" id="f_deliv" type="number" step="any" value="${p.deliveryFee||''}" placeholder="مثال: 200 للإسمنت/الحديد"></div>
           <div class="field"><label>ملاحظات داخلية</label><input class="inp" id="f_notes" value="${esc(p.notes||'')}"></div>
         </div>
       </div>
@@ -2279,7 +2280,7 @@ function editProduct(id){
         wholesale:baseCost,price:finalPrice,oldPrice:disc>0?baseSell:0,discountPct:disc,
         priceWholesale:parseFloat(val('f_pw'))||0,
         qty:_qtot,stock:_stock,minQty:parseFloat(val('f_min'))||0,
-        origin:val('f_origin').trim(),expiry:val('f_exp'),shelf:val('f_shelf').trim(),notes:val('f_notes').trim(),
+        origin:val('f_origin').trim(),expiry:val('f_exp'),shelf:val('f_shelf').trim(),notes:val('f_notes').trim(),deliveryFee:parseFloat(val('f_deliv'))||0,
         desc:val('f_desc').trim(),images:_pendingImgs.slice(),image:_pendingImgs[0]||''};
       let _savedP; if(id){Object.assign(p,data);_savedP=p;}else{_savedP={id:uid('p'),createdAt:Date.now(),...data};DB.products.push(_savedP);}
       _pendingImgs=[];_curProdUnits=[];
@@ -3928,7 +3929,7 @@ function vchPartyName(v){
   if(v.partyType==='supplier'){const s=DB.suppliers.find(x=>x.id===v.partyId);return s?s.name:(v.partyName||'مورد');}
   return v.partyName||'حساب آخر';
 }
-const APP_BUILD='يومية-جديدة · 20/06 #97';
+const APP_BUILD='يومية-جديدة · 20/06 #100';
 let jrnDay=null,jrnBox='',jrnQ='';
 function journalEntries(day,boxId){
   const E=[];const sameDay=d=>(d||'').slice(0,10)===day;
@@ -5415,7 +5416,7 @@ function vSettings(v){
       <div class="field"><label>العلامات التجارية (افصل بفاصلة)</label><input class="inp" id="set_brands" value="${esc((DB.settings.brands||[]).join('، '))}"></div>
       <div class="field"><label>رمز الدخول السريع (مدير)</label><input class="inp" id="set_pin" inputmode="numeric" placeholder="مثال: 1234" value="${esc(DB.settings.quickPin||'')}"></div>
       <div class="field"><label>رقم الدفع الموحّد (تطبيقات الدفع)</label><input class="inp" id="set_paynum" inputmode="numeric" placeholder="مثال: 20108565" value="${esc(DB.settings.payNumber||'20108565')}"></div>
-      <div class="field"><label>رسوم الحمل / التوصيل لكل طلب</label><input class="inp" id="set_delivery" type="number" step="any" value="${DB.settings.delivery!=null?DB.settings.delivery:50}"></div>
+      <div class="field"><label>رسوم الحمل الافتراضية (إن لم تُحدَّد للمنتج)</label><input class="inp" id="set_delivery" type="number" step="any" value="${DB.settings.delivery!=null?DB.settings.delivery:50}"></div>
       <div class="field"><label>عرض الطابعة الحرارية</label><select class="inp" id="set_thermal"><option value="80" ${(DB.settings.thermalWidth||'80')==='80'?'selected':''}>80mm</option><option value="58" ${DB.settings.thermalWidth==='58'?'selected':''}>58mm</option></select></div>
       <div class="field" style="border:1px solid var(--line);border-radius:12px;padding:12px;margin-top:6px">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="set_cloudsync" ${DB.settings.cloudSync?'checked':''} style="width:18px;height:18px"> مزامنة البيانات المالية بين الأجهزة (سحابي)</label>
@@ -5440,6 +5441,13 @@ function vSettings(v){
       <div class="field" style="grid-column:1/-1"><label>الشروط والاستخدام</label><textarea class="inp" id="set_terms" style="min-height:80px">${esc(DB.settings.terms||'')}</textarea></div>
     </div>
     <button class="btn btn-primary" style="margin-top:14px" onclick="saveSettings()">${svg(I.check,16)} حفظ الإعدادات</button></div>
+  </div>
+
+  <div class="panel" style="margin-bottom:16px"><div class="panel-h">${svg(I.download,18)}<h3>نسخة احتياطية تلقائية على الكمبيوتر</h3></div>
+    <div style="padding:18px">
+      <div class="muted" style="font-size:13px;line-height:1.9;margin-bottom:12px">يحفظ نسخة كاملة من بياناتك في ملف على هذا الكمبيوتر، ويُحدّثه <b>تلقائياً كل 10 دقائق</b> ما دام التطبيق مفتوحاً. تختار الملف مرّة واحدة فقط. (متوفّر على متصفّح كمبيوتر مثل Chrome/Edge — غير مدعوم على الهاتف.)</div>
+      <div id="autoBkBox"></div>
+    </div>
   </div>
 
   <div class="panel" style="margin-bottom:16px"><div class="panel-h">${svg(I.wallet,18)}<h3>الصناديق وتطبيقات البنكية والخدمات</h3></div>
@@ -5474,6 +5482,7 @@ function vSettings(v){
       هذه النسخة تعمل وتحفظ البيانات على هذا الجهاز فقط. لتفعيل <b style="color:var(--ink)">المزامنة الفورية بين عدة أجهزة</b> (كمبيوتر + هواتف الموظفين) وتسجيل دخول المستخدمين بالصلاحيات، نربط النظام بقاعدة بيانات سحابية. هذه هي المرحلة التالية في التطوير.
     </div>
   </div>`;
+  setTimeout(()=>{try{renderAutoBackup();}catch(e){}},30);
 }
 let contactsTab='cust';
 function vContacts(v){
@@ -5748,6 +5757,59 @@ function exportProductsTemplate(){
 function exportBackup(){
   try{const data=JSON.stringify(DB);download(new Blob([data],{type:'application/json'}),'نسخة_الصداقة_'+todayISO()+'.json');toast('تم تنزيل النسخة الاحتياطية الكاملة','ok');}
   catch(e){toast('تعذّر إنشاء النسخة','err');}
+}
+/* ===== نسخة احتياطية تلقائية في ملف على الكمبيوتر (File System Access API) ===== */
+let _bkHandle=null,_bkTimer=null,_bkLast=null,_bkNeedPerm=false;
+function bkSupported(){return (typeof window!=='undefined')&&('showSaveFilePicker'in window);}
+function bkIdb(cb){try{const rq=indexedDB.open('sadaqaBackup',1);rq.onupgradeneeded=()=>{try{rq.result.createObjectStore('h');}catch(e){}};rq.onsuccess=()=>cb(rq.result);rq.onerror=()=>cb(null);}catch(e){cb(null);}}
+function bkStoreHandle(h){bkIdb(db=>{if(!db)return;try{db.transaction('h','readwrite').objectStore('h').put(h,'file');}catch(e){}});}
+function bkClearHandle(){bkIdb(db=>{if(!db)return;try{db.transaction('h','readwrite').objectStore('h').delete('file');}catch(e){}});}
+function bkLoadHandle(cb){bkIdb(db=>{if(!db){cb(null);return;}try{const r=db.transaction('h','readonly').objectStore('h').get('file');r.onsuccess=()=>cb(r.result||null);r.onerror=()=>cb(null);}catch(e){cb(null);}});}
+async function pickAutoBackup(){
+  if(!bkSupported()){toast('غير مدعوم على هذا المتصفّح — استخدم كمبيوتر (Chrome/Edge)','err');return;}
+  try{
+    const h=await window.showSaveFilePicker({suggestedName:'نسخة-الصداقة.json',types:[{description:'نسخة احتياطية',accept:{'application/json':['.json']}}]});
+    _bkHandle=h;_bkNeedPerm=false;bkStoreHandle(h);
+    await writeBackupNow(true);startAutoBackup();
+    toast('تم تفعيل النسخ التلقائي على الكمبيوتر','ok');renderAutoBackup();
+  }catch(e){if(e&&e.name==='AbortError')return;toast('تعذّر اختيار الملف','err');}
+}
+async function writeBackupNow(silent){
+  if(!_bkHandle){if(!silent)toast('اختر ملف النسخ أولاً','err');return;}
+  try{
+    if(_bkHandle.queryPermission){const p=await _bkHandle.queryPermission({mode:'readwrite'});if(p!=='granted'){const rp=await _bkHandle.requestPermission({mode:'readwrite'});if(rp!=='granted'){_bkNeedPerm=true;renderAutoBackup();return;}}}
+    const w=await _bkHandle.createWritable();await w.write(JSON.stringify(DB));await w.close();
+    _bkLast=Date.now();_bkNeedPerm=false;if(!silent)toast('تم حفظ النسخة الآن','ok');renderAutoBackup();
+  }catch(e){if(!silent)toast('تعذّر الحفظ في الملف','err');}
+}
+function startAutoBackup(){if(_bkTimer)clearInterval(_bkTimer);_bkTimer=setInterval(()=>{writeBackupNow(true);},600000);}
+function stopAutoBackup(){if(_bkTimer){clearInterval(_bkTimer);_bkTimer=null;}_bkHandle=null;_bkNeedPerm=false;bkClearHandle();toast('أُوقف النسخ التلقائي','ok');renderAutoBackup();}
+async function reenableAutoBackup(){if(!_bkHandle)return;try{const rp=await _bkHandle.requestPermission({mode:'readwrite'});if(rp==='granted'){_bkNeedPerm=false;await writeBackupNow(true);startAutoBackup();toast('تم إعادة التفعيل','ok');}else toast('لم يُمنح الإذن','err');renderAutoBackup();}catch(e){}}
+function resumeAutoBackup(){
+  if(!bkSupported())return;
+  bkLoadHandle(async h=>{if(!h)return;_bkHandle=h;
+    try{const p=h.queryPermission?await h.queryPermission({mode:'readwrite'}):'granted';
+      if(p==='granted'){startAutoBackup();writeBackupNow(true);}else{_bkNeedPerm=true;}
+    }catch(e){_bkNeedPerm=true;}
+    renderAutoBackup();
+  });
+}
+function renderAutoBackup(){
+  const box=document.getElementById('autoBkBox');if(!box)return;
+  if(!bkSupported()){box.innerHTML=`<div style="background:#FEF3C7;color:#92400E;border-radius:10px;padding:11px;font-size:12.5px;line-height:1.8">هذه الميزة تعمل على متصفّح كمبيوتر (Chrome أو Edge). على الهاتف استخدم زرّ «نسخة احتياطية» العادي للتنزيل اليدوي.</div>
+    <button class="btn" style="margin-top:10px" onclick="exportBackup()">${svg(I.download,16)} تنزيل نسخة يدوية الآن</button>`;return;}
+  if(_bkHandle&&_bkNeedPerm){
+    box.innerHTML=`<div style="background:#FEF3C7;color:#92400E;border-radius:10px;padding:11px;font-size:12.5px;margin-bottom:10px">النسخ مُعدّ على ملف سابق لكنه يحتاج إذناً بعد إعادة الفتح. اضغط لإعادة التفعيل.</div>
+      <button class="btn btn-primary" onclick="reenableAutoBackup()">${svg(I.check,16)} إعادة تفعيل الحفظ التلقائي</button>
+      <button class="btn" style="margin-inline-start:8px" onclick="stopAutoBackup()">إيقاف</button>`;return;
+  }
+  if(_bkHandle){
+    const last=_bkLast?new Date(_bkLast).toLocaleTimeString('ar',{hour:'2-digit',minute:'2-digit'}):'—';
+    box.innerHTML=`<div style="background:#DCFCE7;color:#15803D;border-radius:10px;padding:11px;font-size:13px;font-weight:700;margin-bottom:10px">✅ النسخ التلقائي مُفعّل · يُحفظ كل 10 دقائق · آخر حفظ: ${last}</div>
+      <button class="btn btn-primary" onclick="writeBackupNow(false)">${svg(I.download,16)} حفظ الآن</button>
+      <button class="btn" style="margin-inline-start:8px;color:var(--danger)" onclick="stopAutoBackup()">إيقاف النسخ التلقائي</button>`;return;
+  }
+  box.innerHTML=`<button class="btn btn-primary" onclick="pickAutoBackup()">${svg(I.download,16)} اختيار ملف النسخ وبدء الحفظ التلقائي</button>`;
 }
 function importBackup(){
   const inp=document.createElement('input');inp.type='file';inp.accept='.json,application/json';
@@ -6251,6 +6313,7 @@ function showAdmin(){
   go(allowedPages()[0]||'dash');
   window.scrollTo(0,0);
   ensureRefreshFab();
+  try{resumeAutoBackup();}catch(e){}
   try{setTimeout(()=>toast('النسخة الحالية: '+(typeof APP_BUILD!=='undefined'?APP_BUILD:'?'),'ok'),400);}catch(e){}
 }
 function forceRefresh(){try{save();}catch(e){}toast('جارٍ التحديث...','ok');setTimeout(()=>location.replace(location.pathname+'?v='+Date.now()),250);}
@@ -6562,6 +6625,7 @@ function payRemoveProof(i){(window._payProofs||[]).splice(i,1);_payProof=(window
 function submitCheckout(num,total){
   const name=(val('co_name')||'').trim();const cc=val('co_cc')||'222';const phone=(val('co_phone')||'').trim();
   if(!name||!phone){toast(t('coNeed'),'err');const ci=document.getElementById('coInfo');if(ci)ci.classList.remove('hidden');return false;}
+  if(cc==='222'&&digitsOnly(phone).length!==8){toast(LANG==='fr'?'Le numéro mauritanien doit comporter 8 chiffres':'رقم الهاتف الموريتاني يجب أن يكون 8 أرقام','err');const ci=document.getElementById('coInfo');if(ci)ci.classList.remove('hidden');return false;}
   // حفظ/تحديث بيانات الزائر تلقائياً
   const v=getVisitor()||{};
   setVisitor({id:v.id||regKey(cc,phone),name,cc,phone,verified:v.verified||false});
@@ -6574,7 +6638,12 @@ function copyText(txt){txt=String(txt);const done=()=>toast('تم النسخ ✓
   else fallbackCopy(txt,done);}
 function fallbackCopy(txt,cb){const ta=document.createElement('textarea');ta.value=txt;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.focus();ta.select();try{document.execCommand('copy');cb&&cb();}catch(e){}ta.remove();}
 function payApps(){return boxes().filter(b=>b.type==='app'||b.type==='bank');}
-function deliveryFee(){return Number(DB.settings.delivery)||0;}
+function prodDeliveryFee(p){return Number(p&&p.deliveryFee)||0;}
+function deliveryFee(){
+  let s=0,any=false;
+  (CART||[]).forEach(l=>{const p=DB.products.find(x=>x.id===l.id);const f=prodDeliveryFee(p)||Number(l.deliveryFee)||0;if(f>0)any=true;s+=f*(Number(l.qty)||0);});
+  return any?s:(Number(DB.settings.delivery)||0);
+}
 function openPaymentStep(ctx){
   _payProof=null;window._payProofs=[];_payMode='full';_payPts=0;_balRemainMode='cod';
   _payApp=(payApps().find(b=>/bankily|بنكيلي/i.test(b.name))||payApps()[0]||{}).id||'';
@@ -7134,7 +7203,8 @@ function visitorRegister(){
       {label:done?'حفظ التعديلات':'تسجيل الحساب',primary:true,icon:I.check,fn:()=>{
         const name=(val('vrName')||'').trim(); const cc=val('vrCc')||'222'; const phone=digitsOnly(val('vrPhone'));
         if(name.length<3){toast('أدخل الاسم الكامل','err');return false;}
-        if(phone.length<6){toast('أدخل رقم هاتف صحيح','err');return false;}
+        if(cc==='222'){if(phone.length!==8){toast('رقم الهاتف الموريتاني يجب أن يكون 8 أرقام','err');return false;}}
+        else if(phone.length<6){toast('أدخل رقم هاتف صحيح','err');return false;}
         const id=regKey(cc,phone);
         const ownSame=(v&&v.id===id); // نفس حساب هذا الجهاز
         const finishSave=(wasDeleted)=>{
@@ -7340,7 +7410,8 @@ function customerLogin(){
 }
 function requestLoginCode(resend){
   const cc=val('li_cc')||'222';const phone=digitsOnly(val('li_phone'));
-  if(phone.length<6){toast('أدخل رقم هاتف صحيح','err');return;}
+  if(cc==='222'){if(phone.length!==8){toast('رقم الهاتف الموريتاني يجب أن يكون 8 أرقام','err');return;}}
+  else if(phone.length<6){toast('أدخل رقم هاتف صحيح','err');return;}
   const id=regKey(cc,phone);_liPhone={cc,phone,id};
   toast('جارٍ إرسال الطلب...','ok');
   const p=cloudGetReg(id);
