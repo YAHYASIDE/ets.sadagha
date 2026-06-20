@@ -3934,7 +3934,7 @@ function vchPartyName(v){
   if(v.partyType==='supplier'){const s=DB.suppliers.find(x=>x.id===v.partyId);return s?s.name:(v.partyName||'مورد');}
   return v.partyName||'حساب آخر';
 }
-const APP_BUILD='يومية-جديدة · 20/06 #101';
+const APP_BUILD='يومية-جديدة · 20/06 #102';
 let jrnDay=null,jrnBox='',jrnQ='';
 function journalEntries(day,boxId){
   const E=[];const sameDay=d=>(d||'').slice(0,10)===day;
@@ -5043,6 +5043,8 @@ function renderOrders(list){
       </div>`:''}
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
         ${o.saleId?`<button class="btn btn-sm" onclick="(function(){var s=DB.sales.find(x=>x.id==='${o.saleId}');if(s)showInvoice(s);})()">عرض الفاتورة</button>`:(!isCancel?`<button class="btn btn-sm btn-primary" onclick="convertOrder('${o.id}')">${svg(I.check,13)} تحويل إلى فاتورة</button>`:'')}
+        ${(!o.saleId&&!isCancel)?`<button class="btn btn-sm" onclick="editOrderInv('${o.id}')">${svg(I.invoice,13)} تعديل الفاتورة</button>`:''}
+        ${!isCancel?`<button class="btn btn-sm" onclick="printOrderInv('${o.id}')">${svg(I.print,13)} طباعة الفاتورة</button>`:''}
         <button class="btn btn-sm" style="color:#16a34a" onclick="orderWa('${o.id}')">${svg(I.wa,13)} واتساب</button>
         ${(o.proof&&!isCancel&&!o.paymentVerified)?`<button class="btn btn-sm" style="color:#15803D;border-color:#bbf7d0" onclick="verifyOrderPayment('${o.id}')">✔ تأكيد الدفع</button>`:''}
         ${!isCancel?`<button class="btn btn-sm" style="color:#b91c1c;border-color:#fecaca" onclick="markOrderFraud('${o.id}')">🚩 احتيالي</button>`:''}
@@ -5159,6 +5161,46 @@ function convertOrder(id){
 }
 function delOrder(id){confirmDlg('حذف الطلب؟','سيُحذف الطلب نهائياً.',()=>{DB.orders=(DB.orders||[]).filter(x=>x.id!==id);cloudDelOrder(id).catch(()=>{});save();updateOrderBadge();renderOrders();toast('تم الحذف','ok');});}
 function orderWa(id){const o=(DB.orders||[]).find(x=>x.id===id);if(!o)return;waOpen(waNum(o.cc,o.phone),'مرحباً '+o.name+'، بخصوص طلبك #'+o.no+' في '+(DB.settings.name||'مؤسسة الصداقة')+'.');}
+function editOrderInv(id){
+  const o=(DB.orders||[]).find(x=>x.id===id);if(!o)return;
+  if(o.saleId){toast('الطلب مُفوتر بالفعل — عدّل من الفاتورة نفسها','err');return;}
+  const rows=(o.items||[]).map((l,i)=>`<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+      <div style="flex:1;font-size:12.5px">${esc(l.name)}</div>
+      <input class="inp" id="eo_q${i}" type="number" step="any" value="${l.qty}" style="width:60px;text-align:center" title="الكمية">
+      <span class="muted" style="font-size:11px">×</span>
+      <input class="inp" id="eo_p${i}" type="number" step="any" value="${l.price}" style="width:82px;text-align:center" title="السعر">
+    </div>`).join('');
+  modal({title:'تعديل الفاتورة #'+o.no,size:'sm',body:`
+    <div class="muted" style="font-size:12px;margin-bottom:8px">عدّل الكميات والأسعار والحمل ثم احفظ. (الحمل قابل للتعديل لكل زبون.)</div>
+    <div style="display:flex;gap:6px;font-size:11px;color:var(--muted);margin-bottom:4px"><span style="flex:1">المادة</span><span style="width:60px;text-align:center">كمية</span><span style="width:96px;text-align:center">سعر</span></div>
+    ${rows}
+    <div class="field" style="margin-top:10px"><label>الحمل (التوصيل)</label><input class="inp" id="eo_deliv" type="number" step="any" value="${Number(o.delivery)||0}"></div>`,
+    actions:[{label:'حفظ',primary:true,icon:I.check,fn:()=>{
+      let itemsTotal=0;
+      (o.items||[]).forEach((l,i)=>{const q=parseFloat(val('eo_q'+i))||0,p=parseFloat(val('eo_p'+i))||0;l.qty=q;l.price=p;itemsTotal+=q*p;});
+      const deliv=parseFloat(val('eo_deliv'))||0;o.delivery=deliv;
+      const ptsDisc=Number(o.pointsDiscount)||0;
+      o.itemsTotal=itemsTotal;o.total=Math.max(0,itemsTotal+deliv-ptsDisc);
+      if(o.payMode==='full')o.deposit=o.total;
+      const paidNow=(o.payMode==='cod')?0:(Number(o.deposit)||0);
+      o.remaining=Math.max(0,o.total-paidNow-(Number(o.fromBalance)||0));
+      save();try{cloudSetOrder(o.id,{items:o.items,itemsTotal:o.itemsTotal,delivery:o.delivery,total:o.total,deposit:o.deposit,remaining:o.remaining});}catch(e){}
+      toast('تم تعديل الفاتورة','ok');renderOrders();
+    }},{label:'إلغاء',fn:()=>true}]});
+}
+function orderSaleLike(o){
+  const items=(o.items||[]).map(l=>({name:l.name,qty:l.qty,price:l.price,total:(Number(l.price)||0)*(Number(l.qty)||0)}));
+  if(Number(o.delivery)>0)items.push({name:'الحمل (توصيل)',qty:1,price:o.delivery,total:o.delivery,service:true});
+  const itemsTotal=items.reduce((a,i)=>a+(Number(i.total)||0),0);
+  return {id:'ord_'+o.id,no:o.saleNo||o.no,type:(Number(o.remaining)>0?'credit':'cash'),date:o.date,customerName:o.name,customerId:'',
+    items,subtotal:itemsTotal,discount:Number(o.pointsDiscount)||0,total:Number(o.total)||itemsTotal,
+    paid:(o.payMode==='cod')?0:(Number(o.deposit)||0),remaining:Number(o.remaining)||0,payments:[]};
+}
+function printOrderInv(id){
+  const o=(DB.orders||[]).find(x=>x.id===id);if(!o)return;
+  if(o.saleId){const s=DB.sales.find(x=>x.id===o.saleId);if(s){showInvoice(s);return;}}
+  showInvoice(orderSaleLike(o));
+}
 function ensureCustomerForReg(r){
   if(!r||!r.phone||r.deleted)return false;
   const key=regKey(r.cc,r.phone);
@@ -6647,9 +6689,11 @@ function fallbackCopy(txt,cb){const ta=document.createElement('textarea');ta.val
 function payApps(){return boxes().filter(b=>b.type==='app'||b.type==='bank');}
 function prodDeliveryFee(p){return Number(p&&p.deliveryFee)||0;}
 function deliveryFee(){
-  let s=0,any=false;
-  (CART||[]).forEach(l=>{const p=DB.products.find(x=>x.id===l.id);const f=prodDeliveryFee(p)||Number(l.deliveryFee)||0;if(f>0)any=true;s+=f*(Number(l.qty)||0);});
-  return any?s:(Number(DB.settings.delivery)||0);
+  let s=0,any=false,n=0;
+  (CART||[]).forEach(l=>{const p=DB.products.find(x=>x.id===l.id);const fee=prodDeliveryFee(p)||Number(l.deliveryFee)||0;if(fee>0)any=true;s+=fee*(Number(l.qty)||0);n++;});
+  if(n>5)s=Math.max(s,100);
+  if(s>0)return s;
+  return Number(DB.settings.delivery)||0;
 }
 function openPaymentStep(ctx){
   _payProof=null;window._payProofs=[];_payMode='full';_payPts=0;_balRemainMode='cod';
