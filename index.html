@@ -194,7 +194,7 @@ textarea.inp{resize:vertical;min-height:64px}
 
 /* Modal */
 .overlay{position:fixed;inset:0;background:rgba(16,36,31,.42);backdrop-filter:blur(2px);z-index:60;display:grid;place-items:center;padding:16px;overflow:auto;overscroll-behavior:contain}
-body.modal-lock{overflow:hidden!important;touch-action:none}
+body.modal-lock,body.menu-open{overflow:hidden!important;touch-action:none}
 .inapp-notif{position:fixed;top:14px;left:50%;transform:translateX(-50%) translateY(-180%);z-index:9999;background:var(--surface,#fff);color:var(--ink,#0f172a);border:1px solid var(--line,#e2e8f0);border-radius:16px;box-shadow:0 18px 50px rgba(0,0,0,.30);padding:12px 14px;display:flex;gap:11px;align-items:flex-start;width:min(430px,92vw);transition:transform .4s cubic-bezier(.2,.85,.25,1);cursor:pointer}
 .inapp-notif.show{transform:translateX(-50%) translateY(0)}
 .inapp-notif .ic{width:42px;height:42px;border-radius:13px;flex:0 0 auto;display:grid;place-items:center;background:linear-gradient(135deg,#1D4ED8,#3b82f6);color:#fff;box-shadow:0 6px 16px rgba(29,78,216,.35)}
@@ -631,7 +631,7 @@ html.dark .pd-thumb{background-color:#1B2742}
 .menu-drop.open{display:block}
 .menu-drop .scrim{position:absolute;inset:0;background:rgba(8,25,66,.35)}
 .menu-card{position:absolute;top:60px;inset-inline-start:12px;width:min(264px,74vw);background:#fff;
-  border-radius:18px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.32);animation:menuIn .2s}
+  border-radius:18px;overflow-y:auto;max-height:calc(100vh - 76px);-webkit-overflow-scrolling:touch;box-shadow:0 24px 60px rgba(0,0,0,.32);animation:menuIn .2s}
 @keyframes menuIn{from{opacity:0;transform:translateY(-10px) scale(.98)}}
 .menu-head{background:linear-gradient(135deg,var(--primary),var(--primary-d));color:#fff;
   padding:14px 15px;display:flex;align-items:center;gap:10px}
@@ -729,7 +729,7 @@ html.dark .pd-thumb{background-color:#1B2742}
 <div class="menu-drop" id="storeMenu">
   <div class="scrim" onclick="closeStoreMenu()"></div>
   <div class="menu-card">
-    <div class="menu-head" onclick="setGuestName()" style="cursor:pointer">
+    <div class="menu-head" onclick="closeStoreMenu();openMyAccountFull()" style="cursor:pointer">
       <div class="menu-ava" id="menuAva"></div>
       <div class="menu-name">زائر</div>
     </div>
@@ -2984,7 +2984,7 @@ function invSave(){
   }else if(isCr){payments.forEach(p=>{const pa=Number(p.amount)||0;if(pa>0)addCash('in',pa,(editing?'تعديل دفعة فاتورة #':'دفعة فاتورة آجلة #')+no,sale.id,p.box||saleBox,sale.date);});}
   else if(paid>0)addCash('in',paid,(editing?'تعديل فاتورة #':'بيع #')+no,sale.id,saleBox,sale.date);
   save();_aff.forEach(p=>cloudPutProduct(p));
-  if(cust&&!isReturn){const _lk=custReg(cust);if(_lk){const _earned=loyEarn(_lk,net,'كسب من فاتورة #'+no);custTxn(_lk,'فاتورة #'+no+' بمبلغ '+m(net)+(_earned?(' · +'+_earned+' '+loyName()):''));if(_earned>0)toast('مُنح الزبون '+_earned+' '+loyName(),'ok');}}
+  if(cust&&!isReturn){const _lk=custReg(cust);if(_lk){const _prodBase=Math.max(0,cart.filter(l=>!l.service).reduce((a,l)=>a+(lineCalc(l).total||0),0));const _earned=loyEarn(_lk,_prodBase,'كسب من فاتورة #'+no);custTxn(_lk,'فاتورة #'+no+' بمبلغ '+m(net)+(_earned?(' · +'+_earned+' '+loyName()):''));if(_earned>0)toast('مُنح الزبون '+_earned+' '+loyName(),'ok');}}
   if(cust)syncCustToReg(cust);
   editSaleId='';cart=[];saleCustomer='';_pickedId='';invPayments=[];invMin=false;
   toast(editing?('تم تعديل الفاتورة #'+no):(isReturn?('تم تسجيل مرتجع البيع #'+no+' — أُعيدت المواد للمخزن'):('تم حفظ الفاتورة #'+no)),'ok');
@@ -3880,7 +3880,7 @@ function vchPartyName(v){
   if(v.partyType==='supplier'){const s=DB.suppliers.find(x=>x.id===v.partyId);return s?s.name:(v.partyName||'مورد');}
   return v.partyName||'حساب آخر';
 }
-const APP_BUILD='يومية-جديدة · 20/06 #79';
+const APP_BUILD='يومية-جديدة · 20/06 #82';
 let jrnDay=null,jrnBox='',jrnQ='';
 function journalEntries(day,boxId){
   const E=[];const sameDay=d=>(d||'').slice(0,10)===day;
@@ -4128,12 +4128,13 @@ function applyVoucherEffect(vch,date){
   if(vch.partyType==='customer'){const c=DB.customers.find(x=>x.id===vch.partyId);if(c){
     c.balance=(c.balance||0)+(kind==='receipt'?-amt:amt);
     DB.custPays.push({id:uid('cp'),custId:c.id,amount:(kind==='receipt'?amt:-amt),date,note:note||(kind==='receipt'?'إيصال قبض':'إيصال دفع'),box,voucher:vch.id});
+    try{const _lk=custReg(c);syncCustToReg(c);if(_lk)custTxn(_lk,(kind==='receipt'?('💰 سجّل المتجر إيصال قبض بمبلغ '+m(amt)+' على حسابك · رصيدك الآن: '+m(c.balance)):('سجّل المتجر إيصال دفع بمبلغ '+m(amt)+' · رصيدك الآن: '+m(c.balance))));}catch(e){}
   }}
   else if(vch.partyType==='supplier'){const s=DB.suppliers.find(x=>x.id===vch.partyId);if(s)s.balance=(s.balance||0)+(kind==='receipt'?amt:-amt);}
 }
 function reverseVoucherEffect(v){
   addCash(v.kind==='receipt'?'out':'in',v.amount,'تعديل إيصال #'+v.no,v.id,v.box);
-  if(v.partyType==='customer'){const c=DB.customers.find(x=>x.id===v.partyId);if(c)c.balance=(c.balance||0)+(v.kind==='receipt'?v.amount:-v.amount);DB.custPays=DB.custPays.filter(p=>p.voucher!==v.id);}
+  if(v.partyType==='customer'){const c=DB.customers.find(x=>x.id===v.partyId);if(c){c.balance=(c.balance||0)+(v.kind==='receipt'?v.amount:-v.amount);DB.custPays=DB.custPays.filter(p=>p.voucher!==v.id);try{syncCustToReg(c);}catch(e){}}}
   else if(v.partyType==='supplier'){const s=DB.suppliers.find(x=>x.id===v.partyId);if(s)s.balance=(s.balance||0)+(v.kind==='receipt'?-v.amount:v.amount);}
 }
 function saveVoucher(kind,editId){
@@ -6705,7 +6706,7 @@ function openStoreMenu(){
   const el=document.getElementById('menuAuth');
   if(el){const v=getVisitor();const reg=!!(v&&(v.id||v.phone));
     const acc=`<button class="menu-item" onclick="closeStoreMenu();visitorRegister()">
-        <span class="mlabel">${reg?'حسابي':'سجّل بياناتك'}</span>
+        <span class="mlabel">سجّل بياناتك</span>
         <span class="micon" style="background:#E5EDFF;color:#1D4ED8"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><circle cx="12" cy="8" r="3.4"/><path d="M5 20a7 7 0 0 1 14 0"/></svg></span></button>`;
     const stmt=reg?`<button class="menu-item" onclick="closeStoreMenu();myAccountStatement()">
         <span class="mlabel">كشف حسابي</span>
@@ -6717,8 +6718,9 @@ function openStoreMenu(){
       :`<button class="menu-item" onclick="closeStoreMenu();customerLogin()">
         <span class="mlabel">تسجيل الدخول بحساب</span>
         <span class="micon" style="background:#DCFCE7;color:#15803D"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5M15 12H3"/></svg></span></button>`;
-    el.innerHTML=acc+stmt+auth;
+    el.innerHTML=(reg?'':acc)+stmt+auth;
   }
+  document.body.classList.add('menu-open');
   document.getElementById('storeMenu').classList.add('open');
 }
 let _cfProf='',_cfCoords=null,_cfStoreKind='craft';
@@ -7116,6 +7118,11 @@ function renderMyStmt(v,entries,bal,loading){
     <p class="muted" style="font-size:11px;margin-top:8px">للاستفسار عن حسابك تواصل معنا عبر واتساب.</p></div>`;
   modal({title:'كشف حسابي',size:'lg',body,actions:[{label:'تسديد / دفع',primary:true,icon:I.wallet||I.check,fn:()=>{closeModal();setTimeout(()=>payDebtSheet(bal>0?bal:0),150);return false;}},{label:'طباعة',icon:I.print,fn:()=>{printEl('myStmt');return false;}},{label:'إغلاق',fn:()=>true}]});
 }
+function openMyAccountFull(){
+  const v=getVisitor();
+  if(!v||!(v.id||v.phone)){openAccountSheet();return;}
+  openAccountSheet();
+}
 function openAccountSheet(){
   const v=getVisitor();const reg=!!(v&&v.id);
   modal({title:'حسابي',size:'sm',body:`
@@ -7232,7 +7239,7 @@ function applyDark(){
 }
 function toggleDark(){DB.settings.dark=!DB.settings.dark;save();applyDark();
   toast(DB.settings.dark?t('darkOn'):t('darkOff'),'ok');}
-function closeStoreMenu(){document.getElementById('storeMenu').classList.remove('open');}
+function closeStoreMenu(){document.body.classList.remove('menu-open');document.getElementById('storeMenu').classList.remove('open');}
 function showAbout(){
   const txt=DB.settings.about||t('aboutDef');
   modal({title:t('mAbout'),body:`<div style="text-align:center;margin-bottom:14px"><div id="aboutLogo" style="width:72px;height:72px;margin:0 auto 10px;border-radius:50%;background:#fff center/contain no-repeat;border:1px solid var(--line)"></div></div>
