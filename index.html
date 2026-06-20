@@ -2898,6 +2898,7 @@ function invSave(){
   else if(paid>0)addCash('in',paid,(editing?'تعديل فاتورة #':'بيع #')+no,sale.id,saleBox,sale.date);
   save();_aff.forEach(p=>cloudPutProduct(p));
   if(cust&&!isReturn){const _lk=custReg(cust);if(_lk){const _earned=loyEarn(_lk,net,'كسب من فاتورة #'+no);custTxn(_lk,'فاتورة #'+no+' بمبلغ '+m(net)+(_earned?(' · +'+_earned+' '+loyName()):''));if(_earned>0)toast('مُنح الزبون '+_earned+' '+loyName(),'ok');}}
+  if(cust)syncCustToReg(cust);
   editSaleId='';cart=[];saleCustomer='';_pickedId='';invPayments=[];invMin=false;
   toast(editing?('تم تعديل الفاتورة #'+no):(isReturn?('تم تسجيل مرتجع البيع #'+no+' — أُعيدت المواد للمخزن'):('تم حفظ الفاتورة #'+no)),'ok');
   render();
@@ -3672,7 +3673,7 @@ function collectPayment(id){
       DB.vouchers.push({id:vid,no:vno,kind:'receipt',partyType:'customer',partyId:id,partyName:c.name,amount:amt,box,date:todayISO()+'T'+new Date().toISOString().slice(11),note:note||'تحصيل دفعة'});
       DB.custPays.push({id:uid('cp'),custId:id,amount:amt,date:todayISO(),note:note||'تحصيل دفعة',box,voucher:vid});
       addCash('in',amt,'إيصال قبض #'+vno+' من العميل '+c.name+(note?(' — '+note):''),vid,box);
-      save();toast('تم تسجيل الدفعة','ok');render();
+      save();try{syncCustToReg(c);custTxn(custReg(c),'دفعة مسدّدة بمبلغ '+m(amt)+' · رصيدك: '+m(c.balance));}catch(e){}toast('تم تسجيل الدفعة','ok');render();
     }},{label:'إلغاء',fn:()=>true}]});
 }
 
@@ -3708,7 +3709,7 @@ function vchPartyName(v){
   if(v.partyType==='supplier'){const s=DB.suppliers.find(x=>x.id===v.partyId);return s?s.name:(v.partyName||'مورد');}
   return v.partyName||'حساب آخر';
 }
-const APP_BUILD='يومية-جديدة · 20/06 #64';
+const APP_BUILD='يومية-جديدة · 20/06 #65';
 let jrnDay=null,jrnBox='',jrnQ='';
 function journalEntries(day,boxId){
   const E=[];const sameDay=d=>(d||'').slice(0,10)===day;
@@ -4841,6 +4842,20 @@ function loyAdd(key,delta,reason,date){if(!key||!delta)return;const r=DB.loyalty
 function loyKeyCust(c){return (c&&c.phone)?regKey(c.cc,c.phone):'';}
 function custReg(c){return (c&&c.phone)?regKey(c.cc,c.phone):'';}
 function custTxn(key,text,extra){if(!key)return;const patch=Object.assign({points:loyPoints(key),lastTxn:{id:uid('tx'),date:new Date().toISOString(),text:text||''}},extra||{});try{if(typeof cloudSetReg==='function')cloudSetReg(key,patch);}catch(e){}}
+function custStatementEntries(cust){
+  if(!cust)return [];
+  const invoices=(DB.sales||[]).filter(s=>s.customerId===cust.id);
+  const pays=(DB.custPays||[]).filter(pp=>pp.custId===cust.id);
+  const entries=[];
+  invoices.forEach(s=>{const ret=s.type==='return';entries.push({date:s.date,label:'فاتورة #'+s.no+(ret?' (مرتجع)':s.type==='credit'?' (آجل)':' (نقدي)'),debit:ret?0:(Number(s.total)||0),credit:(Number(s.paid)||0)+(ret?(Number(s.total)||0):0)});});
+  pays.forEach(pp=>{const a=Number(pp.amount)||0;entries.push({date:pp.date,label:(a>=0?'دفعة مسدّدة':'صرف/إرجاع')+(pp.note?(' — '+pp.note):''),debit:a<0?-a:0,credit:a>0?a:0});});
+  entries.sort((a,b)=>new Date(a.date)-new Date(b.date));
+  return entries;
+}
+function syncCustToReg(cust){
+  if(!cust||!cust.phone)return;const key=regKey(cust.cc,cust.phone);
+  try{cloudSetReg(key,{balance:Number(cust.balance)||0,statement:custStatementEntries(cust).slice(-40),stmtAt:Date.now()});}catch(e){}
+}
 function loyEarn(key,amount,reason){if(!loyOn()||!key)return 0;const pts=Math.floor((Number(amount)||0)*loyEarnRate()/100);if(pts>0){loyAdd(key,pts,reason||'كسب من شراء');try{if(typeof cloudSetReg==='function')cloudSetReg(key,{points:loyPoints(key)});}catch(e){}}return pts;}
 function loyManage(key,name){
   if(!key){toast('لا رقم هاتف لهذا العميل','err');return;}
@@ -4892,6 +4907,7 @@ function convertOrder(id){
       if(earned>0)toast('مُنح الزبون '+earned+' '+loyName(),'ok');
       custTxn(o.customerId,'طلبك #'+o.no+' أصبح فاتورة بمبلغ '+m(total)+(earned?(' · +'+earned+' '+loyName()):''));
     }
+    if(cust)syncCustToReg(cust);
     save();updateOrderBadge();toast('تم تحويل الطلب إلى فاتورة #'+no,'ok');
     if(current==='orders')renderOrders();
     showInvoice(sale);
@@ -4903,8 +4919,16 @@ function convertOrder(id){
 }
 function delOrder(id){confirmDlg('حذف الطلب؟','سيُحذف الطلب نهائياً.',()=>{DB.orders=(DB.orders||[]).filter(x=>x.id!==id);cloudDelOrder(id).catch(()=>{});save();updateOrderBadge();renderOrders();toast('تم الحذف','ok');});}
 function orderWa(id){const o=(DB.orders||[]).find(x=>x.id===id);if(!o)return;waOpen(waNum(o.cc,o.phone),'مرحباً '+o.name+'، بخصوص طلبك #'+o.no+' في '+(DB.settings.name||'مؤسسة الصداقة')+'.');}
+function ensureCustomerForReg(r){
+  if(!r||!r.phone)return false;
+  const ex=DB.customers.find(c=>digitsOnly(c.phone||'')===digitsOnly(r.phone)&&(c.cc||'222')===(r.cc||'222'));
+  if(ex){if(r.name&&ex.fromReg&&ex.name!==r.name){ex.name=r.name;return true;}return false;}
+  DB.customers.push({id:uid('c'),name:r.name||('زبون '+r.phone),cc:r.cc||'222',phone:r.phone,phone2:'',fax:'',address:r.address||'',image:r.image||'',balance:0,fromReg:true});
+  return true;
+}
+function syncRegsToCustomers(list){let ch=false;(list||[]).forEach(r=>{if(ensureCustomerForReg(r))ch=true;});if(ch)save();}
 function regsRefresh(){
-  const fill=list=>{_regsCache=(list||[]).slice();const el=document.getElementById('regsList');if(el)el.innerHTML=regsTable(_regsCache);if(typeof updateRegBadge==='function')updateRegBadge();};
+  const fill=list=>{_regsCache=(list||[]).slice();syncRegsToCustomers(_regsCache);const el=document.getElementById('regsList');if(el)el.innerHTML=regsTable(_regsCache);if(typeof updateRegBadge==='function')updateRegBadge();};
   const p=cloudFetchRegistrations();
   if(p&&p.then){p.then(list=>{if(list===null){fill(DB.registrations||[]);}else{DB.registrations=list;save();fill(list);}}).catch(()=>fill(DB.registrations||[]));}
   else fill(DB.registrations||[]);
@@ -6799,34 +6823,33 @@ function myAccountStatement(){
   const v=getVisitor();
   if(!v||!v.id){toast('سجّل حسابك أولاً','err');visitorRegister();return;}
   const cust=DB.customers.find(c=>c.phone&&v.phone&&digitsOnly(c.phone)===digitsOnly(v.phone))||DB.customers.find(c=>regKey(c.cc,c.phone)===v.id);
+  const localEntries=cust?custStatementEntries(cust):[];
+  if(cust&&localEntries.length){renderMyStmt(v,localEntries,Number(cust.balance)||0);return;}
+  // لا بيانات محلية (جهاز الزبون): اجلب كشف الحساب من تسجيله السحابي
+  modal({title:'كشف حسابي',size:'lg',body:`<div class="muted" style="padding:24px;text-align:center">جارٍ تحميل كشف حسابك...</div>`,actions:[{label:'إغلاق',primary:true,fn:()=>true}]});
+  const p=cloudGetReg(v.id);
+  const done=reg=>{
+    const entries=(reg&&Array.isArray(reg.statement))?reg.statement:[];
+    const bal=(reg&&reg.balance!=null)?Number(reg.balance)||0:0;
+    if(entries.length){renderMyStmt(v,entries,bal);return;}
+    // احتياطي: من الطلبات
+    const ords=myOrders();const rows=[];let totBuy=0,totPaid=0,b=0;
+    const ST={pending:'بانتظار',delivering:'قيد التوصيل',delivered:'تم التسليم',rejected:'مرفوض'};
+    ords.slice().sort((a,b)=>new Date(a.date)-new Date(b.date)).forEach(o=>{if(o.status==='rejected')return;const paid=Number(o.deposit)||0,tot=Number(o.total)||0,rem=(o.remaining!=null)?Number(o.remaining):(tot-paid);totBuy+=tot;totPaid+=paid;b+=Math.max(0,rem);rows.push({date:o.date,label:'طلب #'+(o.no||'')+' · '+(ST[o.status]||o.status||''),debit:tot,credit:paid});});
+    if(rows.length)renderMyStmt(v,rows,b);
+    else{const el=document.getElementById('modalRoot');if(el)el.innerHTML=`<div class="empty" style="padding:24px">${svg(I.report,40)}<b>لا توجد معاملات بعد</b><span class="muted">ستظهر هنا مشترياتك ومدفوعاتك ورصيدك.</span></div>`;}
+  };
+  if(p&&p.then)p.then(done).catch(()=>done(null));else done(null);
+}
+function renderMyStmt(v,entries,bal){
   const cell='padding:8px 10px;border:1px solid var(--line)';
-  let rows='',totBuy=0,totPaid=0,bal=0,hasData=false;
-  if(cust){
-    hasData=true;
-    const invoices=(DB.sales||[]).filter(s=>s.customerId===cust.id);
-    const pays=(DB.custPays||[]).filter(pp=>pp.custId===cust.id);
-    const entries=[];
-    invoices.forEach(s=>{const ret=s.type==='return';entries.push({date:s.date,label:'فاتورة #'+s.no+(ret?' (مرتجع)':s.type==='credit'?' (آجل)':' (نقدي)'),debit:ret?0:(s.total||0),credit:(s.paid||0)+(ret?(s.total||0):0)});});
-    pays.forEach(pp=>{const a=Number(pp.amount)||0;entries.push({date:pp.date,label:(a>=0?'دفعة مسدّدة':'صرف')+(pp.note?(' — '+esc(pp.note)):''),debit:a<0?-a:0,credit:a>0?a:0});});
-    entries.sort((a,b)=>new Date(a.date)-new Date(b.date));
-    totBuy=invoices.reduce((a,s)=>a+(s.type==='return'?0:(s.total||0)),0);
-    totPaid=entries.reduce((a,e)=>a+e.credit,0);
-    const net=entries.reduce((a,e)=>a+(e.debit-e.credit),0);
-    let run=(cust.balance||0)-net;
-    rows=entries.map(e=>{run+=(e.debit-e.credit);return `<tr><td style="${cell};text-align:center" class="muted">${fmtDate(e.date)}</td><td style="${cell};text-align:start">${esc(e.label)}</td><td style="${cell};text-align:center">${e.debit?money(e.debit):''}</td><td style="${cell};text-align:center">${e.credit?money(e.credit):''}</td><td style="${cell};text-align:center"><b>${money(run)}</b></td></tr>`;}).join('');
-    bal=cust.balance||0;
-  }else{
-    const ords=myOrders();
-    if(ords.length){hasData=true;
-      const ST={pending:'بانتظار',delivering:'قيد التوصيل',delivered:'تم التسليم',rejected:'مرفوض'};
-      ords.slice().sort((a,b)=>new Date(a.date)-new Date(b.date)).forEach(o=>{const paid=Number(o.deposit)||0;const tot=Number(o.total)||0;const rem=(o.remaining!=null)?Number(o.remaining):(tot-paid);
-        if(o.status==='rejected')return;
-        totBuy+=tot;totPaid+=paid;bal+=Math.max(0,rem);
-        rows+=`<tr><td style="${cell};text-align:center" class="muted">${fmtDate(o.date)}</td><td style="${cell};text-align:start">طلب #${o.no||''} · ${ST[o.status]||o.status||''}</td><td style="${cell};text-align:center">${money(tot)}</td><td style="${cell};text-align:center">${money(paid)}</td><td style="${cell};text-align:center"><b>${money(Math.max(0,rem))}</b></td></tr>`;});
-    }
-  }
-  modal({title:'كشف حسابي',size:'lg',body: hasData?`
-    <div id="myStmt" dir="rtl">
+  entries=(entries||[]).slice().sort((a,b)=>new Date(a.date)-new Date(b.date));
+  const totBuy=entries.reduce((a,e)=>a+(Number(e.debit)||0),0);
+  const totPaid=entries.reduce((a,e)=>a+(Number(e.credit)||0),0);
+  const net=entries.reduce((a,e)=>a+((Number(e.debit)||0)-(Number(e.credit)||0)),0);
+  let run=(Number(bal)||0)-net;
+  const rows=entries.map(e=>{run+=((Number(e.debit)||0)-(Number(e.credit)||0));return `<tr><td style="${cell};text-align:center" class="muted">${fmtDate(e.date)}</td><td style="${cell};text-align:start">${esc(e.label||'')}</td><td style="${cell};text-align:center">${e.debit?money(e.debit):''}</td><td style="${cell};text-align:center">${e.credit?money(e.credit):''}</td><td style="${cell};text-align:center"><b>${money(run)}</b></td></tr>`;}).join('');
+  const body=`<div id="myStmt" dir="rtl">
     <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px">
       <div><b style="font-size:15px">${esc(v.name)}</b><div class="muted" style="font-size:12px" dir="ltr">+${esc(v.cc||'222')} ${esc(v.phone||'')}</div></div>
       <div style="text-align:end"><div class="muted" style="font-size:11px">الرصيد النهائي</div><b style="font-size:16px;color:${bal>0?'var(--danger)':bal<0?'var(--success)':'inherit'}">${bal>0?'عليك: '+m(bal):bal<0?'لك (دائن): '+m(-bal):'مُسوّى ✔'}</b></div>
@@ -6840,10 +6863,9 @@ function myAccountStatement(){
       <thead><tr style="background:var(--surface-2)"><th style="${cell};text-align:center">التاريخ</th><th style="${cell};text-align:start">البيان</th><th style="${cell};text-align:center">مدين (عليك)</th><th style="${cell};text-align:center">دائن (مدفوع)</th><th style="${cell};text-align:center">الرصيد</th></tr></thead>
       <tbody>${rows||''}</tbody>
     </table>
-    <p class="muted" style="font-size:11px;margin-top:8px">للاستفسار عن حسابك تواصل معنا عبر واتساب.</p>
-    </div>`
-    :`<div class="empty" style="padding:24px">${svg(I.report,40)}<b>لا توجد معاملات بعد</b><span class="muted">ستظهر هنا مشترياتك ومدفوعاتك ورصيدك.</span></div>`,
-    actions:[hasData?{label:'طباعة',icon:I.print,fn:()=>{printEl('myStmt');return false;}}:null,{label:'إغلاق',primary:true,fn:()=>true}].filter(Boolean)});
+    <p class="muted" style="font-size:11px;margin-top:8px">للاستفسار عن حسابك تواصل معنا عبر واتساب.</p></div>`;
+  const el=document.getElementById('modalRoot');
+  if(el)el.innerHTML=body;else modal({title:'كشف حسابي',size:'lg',body,actions:[{label:'طباعة',icon:I.print,fn:()=>{printEl('myStmt');return false;}},{label:'إغلاق',primary:true,fn:()=>true}]});
 }
 function openAccountSheet(){
   const v=getVisitor();const reg=!!(v&&v.id);
