@@ -950,13 +950,20 @@ function registerPush(){
     }).catch(()=>toast('تعذّر تسجيل خدمة الإشعارات','err'));
   }catch(e){toast('تعذّر تفعيل الإشعارات','err');}
 }
+function pushMyNotif(title,body){
+  try{const list=JSON.parse(localStorage.getItem('sadaqa_my_notifs')||'[]');
+    list.unshift({title:title||'إشعار',body:body||'',date:new Date().toISOString()});
+    localStorage.setItem('sadaqa_my_notifs',JSON.stringify(list.slice(0,60)));}catch(e){}
+}
+function myNotifs(){try{return JSON.parse(localStorage.getItem('sadaqa_my_notifs')||'[]');}catch(e){return [];}}
 function showInAppNotif(title,body){
+  pushMyNotif(title,body);
   let el=document.getElementById('inAppNotif');if(el)el.remove();
   el=document.createElement('div');el.id='inAppNotif';el.className='inapp-notif';
   el.innerHTML=`<div class="ic"><svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg></div>
     <div style="flex:1;min-width:0"><div class="ttl">${esc(title||'إشعار جديد')}</div>${body?`<div class="bd">${esc(body)}</div>`:''}</div>
     <button class="cls" onclick="event.stopPropagation();var e=document.getElementById('inAppNotif');if(e){e.classList.remove('show');setTimeout(function(){e.remove();},350);}">×</button>`;
-  el.onclick=()=>{el.remove();try{openNotifications();}catch(e){}};
+  el.onclick=()=>{el.remove();try{openNotifications('notif');}catch(e){}};
   document.body.appendChild(el);
   try{playSound('notify');}catch(e){}
   requestAnimationFrame(()=>el.classList.add('show'));
@@ -1594,6 +1601,17 @@ function showOrderAlert(){
     document.body.appendChild(el);try{playSound('notify');}catch(e){}}
   el.innerHTML=`🛒 لديك ${n} طلب جديد — اضغط للمراجعة والتحويل لفاتورة`;
 }
+function showCustPayAlert(){
+  if(typeof CUR_USER==='undefined'||!CUR_USER){const ex=document.getElementById('custPayAlert');if(ex)ex.remove();return;}
+  const n=(typeof pendingCustPays==='function')?pendingCustPays().length:0;
+  let el=document.getElementById('custPayAlert');
+  if(n<=0){if(el)el.remove();return;}
+  if(!el){el=document.createElement('div');el.id='custPayAlert';
+    el.onclick=()=>{el.remove();try{openCustPayReviews();}catch(e){}};
+    el.style.cssText='position:fixed;top:64px;left:50%;transform:translateX(-50%);z-index:5000;background:linear-gradient(135deg,#0d9488,#14b8a6);color:#fff;padding:13px 22px;border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.28);font-weight:800;font-size:14.5px;cursor:pointer;display:flex;align-items:center;gap:10px;max-width:92vw;text-align:center';
+    document.body.appendChild(el);try{playSound('notify');}catch(e){}}
+  el.innerHTML=`💵 لديك ${n} دفعة من زبائن — اضغط للمراجعة والتأكيد`;
+}
 function buildNav(){
   const pages=PAGES.filter(p=>p.sep||(can(p.id)&&!p.hide));
   const html=pages.map(p=>p.sep?'<div class="sep"></div>':
@@ -1639,6 +1657,7 @@ function go(id){
   document.querySelectorAll('.nav button,.mobilenav button,.erpbtn').forEach(b=>b.classList.toggle('active',b.dataset.id===id));
   window.scrollTo(0,0);
   render();
+  try{if(typeof updateCustPayBadge==='function')updateCustPayBadge();if(typeof showOrderAlert==='function')showOrderAlert();}catch(e){}
 }
 function openDrawer(){document.getElementById('drawer').classList.add('open');}
 function closeDrawer(){document.getElementById('drawer').classList.remove('open');}
@@ -3742,7 +3761,11 @@ function collectPayment(id){
       DB.vouchers.push({id:vid,no:vno,kind:'receipt',partyType:'customer',partyId:id,partyName:c.name,amount:amt,box,date:todayISO()+'T'+new Date().toISOString().slice(11),note:note||'تحصيل دفعة'});
       DB.custPays.push({id:uid('cp'),custId:id,amount:amt,date:todayISO(),note:note||'تحصيل دفعة',box,voucher:vid});
       addCash('in',amt,'إيصال قبض #'+vno+' من العميل '+c.name+(note?(' — '+note):''),vid,box);
-      save();try{syncCustToReg(c);custTxn(custReg(c),'دفعة مسدّدة بمبلغ '+m(amt)+' · رصيدك: '+m(c.balance));}catch(e){}toast('تم تسجيل الدفعة','ok');render();
+      const _lk=custReg(c);
+      try{syncCustToReg(c);if(_lk)custTxn(_lk,'💰 سجّل المتجر دفعة بمبلغ '+m(amt)+' على حسابك · رصيدك الآن: '+m(c.balance));}catch(e){}
+      try{const cpRec={id:uid('cpr'),customerId:_lk,name:c.name,cc:c.cc||'222',phone:c.phone||'',amount:amt,app:boxName(box),box,proof:'',note:note||'تحصيل يدوي من المتجر',date:new Date().toISOString(),status:'confirmed',source:'store'};
+        cloudAddCustPayment(cpRec).catch(()=>{});window._custPayReqs=window._custPayReqs||[];window._custPayReqs.unshift(cpRec);if(typeof updateCustPayBadge==='function')updateCustPayBadge();}catch(e){}
+      save();toast(_lk?'تم تسجيل الدفعة وإشعار الزبون':'تم تسجيل الدفعة','ok');render();
     }},{label:'إلغاء',fn:()=>true}]});
 }
 /* ===== تسديد/دفع من الزبون مع تأكيد المتجر ===== */
@@ -3780,7 +3803,7 @@ function submitCustPayment(){
   toast('أُرسلت الدفعة — بانتظار تأكيد المتجر','ok');return false;
 }
 function pendingCustPays(){return (window._custPayReqs||[]).filter(p=>p&&(p.status||'pending')==='pending');}
-function updateCustPayBadge(){const el=document.getElementById('custPayBtn');if(el){const n=pendingCustPays().length;el.innerHTML=svg(I.wallet||I.cash||I.money,15)+' مدفوعات الزبائن'+(n?(' <span class="badge b-ok" style="background:var(--danger);color:#fff">'+n+'</span>'):'');}}
+function updateCustPayBadge(){const el=document.getElementById('custPayBtn');if(el){const n=pendingCustPays().length;el.innerHTML=svg(I.wallet||I.cash||I.money,15)+' مدفوعات الزبائن'+(n?(' <span class="badge b-ok" style="background:var(--danger);color:#fff">'+n+'</span>'):'');}if(typeof showCustPayAlert==='function')showCustPayAlert();}
 function openCustPayReviews(){
   localStorage.setItem('sadaqa_seen_custpay',String(Date.now()));
   const list=(window._custPayReqs||[]).slice().sort((a,b)=>new Date(b.date)-new Date(a.date));
@@ -3857,7 +3880,7 @@ function vchPartyName(v){
   if(v.partyType==='supplier'){const s=DB.suppliers.find(x=>x.id===v.partyId);return s?s.name:(v.partyName||'مورد');}
   return v.partyName||'حساب آخر';
 }
-const APP_BUILD='يومية-جديدة · 20/06 #76';
+const APP_BUILD='يومية-جديدة · 20/06 #79';
 let jrnDay=null,jrnBox='',jrnQ='';
 function journalEntries(day,boxId){
   const E=[];const sameDay=d=>(d||'').slice(0,10)===day;
@@ -6813,29 +6836,48 @@ function visibleAnns(){return (window._ann||[]).filter(annVisible);}
 function updateNotifBadge(){
   const list=visibleAnns();
   const seen=Number(localStorage.getItem('sadaqa_seen_notif')||0);
-  const unread=list.filter(a=>new Date(a.date).getTime()>seen).length;
+  let unread=list.filter(a=>new Date(a.date).getTime()>seen).length;
+  try{unread+=myNotifs().filter(n=>new Date(n.date).getTime()>seen).length;}catch(e){}
   const b=document.getElementById('notifBadge');
   if(b){b.textContent=unread;b.style.display=unread>0?'flex':'none';}
 }
-function openNotifications(){
-  const list=visibleAnns();
-  if(list.length)localStorage.setItem('sadaqa_seen_notif',String(Date.now()));
+function openNotifications(tab){
+  window._notifTab=tab||window._notifTab||'notif';
+  localStorage.setItem('sadaqa_seen_notif',String(Date.now()));
   updateNotifBadge();
-  const offers=activeBannerOffers();
-  const offHtml=offers.length?`<div style="font-weight:800;font-size:13px;margin-bottom:8px;color:var(--primary-d)">🎁 العروض الحالية</div>`+offers.map(o=>`<div style="border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-bottom:12px;background:linear-gradient(180deg,#fff7ed,#fff)">
-    ${o.image?`<img src="${o.image}" style="width:100%;display:block">`:''}
-    <div style="padding:11px 13px"><b style="font-size:14.5px;color:#b45309">🎁 ${esc(o.title||'عرض')}</b>${o.discountPct?` <span class="badge" style="background:#FCE7EE;color:#E11D48">-${o.discountPct}%</span>`:''}
-      ${o.desc?`<p style="font-size:13px;color:var(--muted);margin-top:5px;white-space:pre-wrap;line-height:1.7">${esc(o.desc)}</p>`:''}
-      ${o.endDate?`<div style="font-size:11px;color:var(--muted);margin-top:6px">ساري حتى ${fmtDate(o.endDate)}</div>`:''}</div></div>`).join(''):'';
-  const annHtml=list.length?list.map(a=>`<div style="border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-bottom:12px">
-    ${a.image?`<img src="${a.image}" style="width:100%;display:block">`:''}
-    <div style="padding:11px 13px">
-      <b style="font-size:14.5px;color:var(--ink)">${esc(a.title||'')}</b>
-      ${a.body?`<p style="font-size:13px;color:var(--muted);margin-top:5px;white-space:pre-wrap;line-height:1.7">${esc(a.body)}</p>`:''}
-      <div style="font-size:11px;color:var(--muted);margin-top:7px">${fmtDateTime(a.date)}</div>
-    </div></div>`).join(''):'';
-  const body=(offHtml+annHtml)||`<div class="empty" style="padding:34px">${svg(I.alert,40)}<b>لا إشعارات بعد</b><span>ستظهر هنا عروض المتجر وإشعاراته</span></div>`;
-  modal({title:'الإشعارات والعروض',size:'lg',body,actions:[{label:t('close'),fn:()=>true}]});
+  renderNotifModal();
+}
+function renderNotifModal(){
+  const tb=window._notifTab||'notif';
+  const mine=myNotifs();
+  const anns=visibleAnns();const offers=activeBannerOffers();
+  const offCount=anns.length+offers.length;
+  const tabs=`<div style="display:flex;gap:8px;margin-bottom:12px">
+    <button class="chip ${tb==='notif'?'active':''}" style="flex:1;justify-content:center" onclick="window._notifTab='notif';renderNotifModal()">🔔 إشعاراتي${mine.length?(' ('+mine.length+')'):''}</button>
+    <button class="chip ${tb==='offers'?'active':''}" style="flex:1;justify-content:center" onclick="window._notifTab='offers';renderNotifModal()">🎁 العروض${offCount?(' ('+offCount+')'):''}</button>
+  </div>`;
+  let inner='';
+  if(tb==='notif'){
+    inner=mine.length?mine.map(n=>`<div style="border:1px solid var(--line);border-radius:12px;padding:11px 13px;margin-bottom:10px">
+      <b style="font-size:14px;color:var(--ink)">${esc(n.title||'إشعار')}</b>
+      ${n.body?`<p style="font-size:13px;color:var(--muted);margin-top:4px;white-space:pre-wrap;line-height:1.7">${esc(n.body)}</p>`:''}
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">${fmtDateTime(n.date)}</div></div>`).join('')
+      +`<div style="text-align:center;margin-top:6px"><button class="btn btn-sm btn-ghost" onclick="localStorage.removeItem('sadaqa_my_notifs');renderNotifModal()">مسح الإشعارات</button></div>`
+      :`<div class="empty" style="padding:30px">${svg(I.alert,38)}<b>لا إشعارات بعد</b><span class="muted">ستظهر هنا تحديثات طلباتك ومدفوعاتك وحسابك.</span></div>`;
+  }else{
+    const offHtml=offers.length?offers.map(o=>`<div style="border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-bottom:12px;background:linear-gradient(180deg,#fff7ed,#fff)">
+      ${o.image?`<img src="${o.image}" style="width:100%;display:block">`:''}
+      <div style="padding:11px 13px"><b style="font-size:14.5px;color:#b45309">🎁 ${esc(o.title||'عرض')}</b>${o.discountPct?` <span class="badge" style="background:#FCE7EE;color:#E11D48">-${o.discountPct}%</span>`:''}
+        ${o.desc?`<p style="font-size:13px;color:var(--muted);margin-top:5px;white-space:pre-wrap;line-height:1.7">${esc(o.desc)}</p>`:''}
+        ${o.endDate?`<div style="font-size:11px;color:var(--muted);margin-top:6px">ساري حتى ${fmtDate(o.endDate)}</div>`:''}</div></div>`).join(''):'';
+    const annHtml=anns.length?anns.map(a=>`<div style="border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-bottom:12px">
+      ${a.image?`<img src="${a.image}" style="width:100%;display:block">`:''}
+      <div style="padding:11px 13px"><b style="font-size:14.5px;color:var(--ink)">${esc(a.title||'')}</b>
+        ${a.body?`<p style="font-size:13px;color:var(--muted);margin-top:5px;white-space:pre-wrap;line-height:1.7">${esc(a.body)}</p>`:''}
+        <div style="font-size:11px;color:var(--muted);margin-top:7px">${fmtDateTime(a.date)}</div></div></div>`).join(''):'';
+    inner=(offHtml+annHtml)||`<div class="empty" style="padding:30px">🎁<b>لا عروض حالياً</b><span class="muted">ستظهر هنا عروض المتجر وإعلاناته.</span></div>`;
+  }
+  modal({title:'الإشعارات',size:'lg',body:tabs+'<div>'+inner+'</div>',actions:[{label:t('close'),fn:()=>true}]});
 }
 function getVisitor(){try{return JSON.parse(localStorage.getItem('sadaqa_visitor')||'null');}catch(e){return null;}}
 function setVisitor(v){try{localStorage.setItem('sadaqa_visitor',JSON.stringify(v));}catch(e){}}
@@ -6907,7 +6949,8 @@ function watchAccount(){
     if(reg.points!=null){_myPoints=Number(reg.points)||0;const el=document.getElementById('myLoyPts');if(el)el.textContent=money(_myPoints);}
     if(reg.lastTxn&&reg.lastTxn.id){const seen=localStorage.getItem('sadaqa_seen_txn')||'';
       if(reg.lastTxn.id!==seen){localStorage.setItem('sadaqa_seen_txn',reg.lastTxn.id);
-        if(seen&&reg.lastTxn.text&&reg.lastTxn.text!=='__deleted__'){try{showInAppNotif('🔔 تحديث على حسابك',reg.lastTxn.text||'');}catch(e){}}}}
+        const txt=reg.lastTxn.text;const recent=reg.lastTxn.date?(Date.now()-new Date(reg.lastTxn.date).getTime()<2*24*3600*1000):!!seen;
+        if(txt&&txt!=='__deleted__'&&recent){try{showInAppNotif('🔔 تحديث على حسابك',txt);}catch(e){}}}}
   },e=>{});}catch(e){}
 }
 function pickVrImg(input){const f=input.files[0];if(!f)return;downscaleImage(f,uri=>{if(!uri){toast('تعذّر قراءة الصورة','err');return;}_vrImg=uri;const a=document.getElementById('vrAva');if(a){a.style.backgroundImage=`url(${uri})`;a.innerHTML='';}});input.value='';}
