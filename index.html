@@ -987,7 +987,9 @@ function pubSettings(){
     about:s.about,terms:s.terms,payments:s.payments,address:s.address,hours:s.hours,
     mapUrl:s.mapUrl,facebook:s.facebook,instagram:s.instagram,tiktok:s.tiktok,snapchat:s.snapchat};
 }
+function markProdDeleted(id){if(!id)return;if(!DB._delProds)DB._delProds=[];if(!DB._delProds.includes(id))DB._delProds.push(id);cloudDelProduct(id);}
 function cloudPutProduct(p){
+  if(p&&p.id&&DB._delProds&&DB._delProds.includes(p.id))DB._delProds=DB._delProds.filter(x=>x!==p.id);
   if(!FS||_applyingRemote||!p||!p.id)return;
   setSync('sync');
   FS.collection('products').doc(String(p.id)).set(p)
@@ -1076,7 +1078,15 @@ function cloudInit(){
       DB.products.forEach(p=>{if(p&&p.id)FS.collection('products').doc(String(p.id)).set(p).catch(()=>{});});
     }else if(!snap.empty){
       _applyingRemote=true;
-      DB.products=snap.docs.map(d=>d.data());
+      let docs=snap.docs.map(d=>d.data());
+      /* شواهد الحذف: تجاهل أي منتج حُذف محلياً وأعد محاولة حذفه من السحابة */
+      const tomb=DB._delProds||[];
+      if(tomb.length){
+        const back=docs.filter(d=>d&&tomb.includes(d.id));
+        back.forEach(d=>{try{FS.collection('products').doc(String(d.id)).delete().catch(()=>{});}catch(e){}});
+        docs=docs.filter(d=>d&&!tomb.includes(d.id));
+      }
+      DB.products=docs;
       save();
       _applyingRemote=false;
       refreshViews();
@@ -1943,7 +1953,7 @@ function catSelToggle(c,on){if(on)_catSel.add(c);else _catSel.delete(c);const n=
 function catSelAll(){const all=(DB.categories||[]);const everyone=all.length&&all.every(c=>_catSel.has(c));_catSel.clear();if(!everyone)all.forEach(c=>_catSel.add(c));catMgRefresh();}
 function _deleteCatsWithProducts(cats){
   const ids=DB.products.filter(p=>cats.includes(p.category)).map(p=>p.id);
-  ids.forEach(id=>{try{cloudDelProduct(id);}catch(e){}});
+  ids.forEach(id=>{try{markProdDeleted(id);}catch(e){}});
   DB.products=DB.products.filter(p=>!cats.includes(p.category));
   DB.categories=(DB.categories||[]).filter(x=>!cats.includes(x));
   cats.forEach(c=>{if(DB.catUnits)delete DB.catUnits[c];});
@@ -2052,7 +2062,7 @@ function bulkDeleteProd(){
   if(!selProd.size){toast('لم تحدّد أي مادة','err');return;}
   confirmDlg('حذف المواد المحدّدة؟',`سيتم حذف ${selProd.size} مادة نهائياً. لا يمكن التراجع.`,()=>{
     const ids=[...selProd];
-    ids.forEach(id=>{DB.products=DB.products.filter(x=>x.id!==id);cloudDelProduct(id);});
+    ids.forEach(id=>{DB.products=DB.products.filter(x=>x.id!==id);markProdDeleted(id);});
     selProd.clear();selMode=false;save();toast(`تم حذف ${ids.length} مادة`,'ok');render();
   });
 }
@@ -2294,7 +2304,7 @@ function saveCatPanel(mode){
 function delProduct(id){
   const p=DB.products.find(x=>x.id===id);
   confirmDlg(`حذف "${esc(p.name)}"؟`,'لا يمكن التراجع عن هذا الإجراء.',()=>{
-    DB.products=DB.products.filter(x=>x.id!==id);save();cloudDelProduct(id);toast('تم حذف المنتج','ok');render();
+    DB.products=DB.products.filter(x=>x.id!==id);markProdDeleted(id);save();toast('تم حذف المنتج','ok');render();
   });
 }
 
@@ -3695,7 +3705,7 @@ function vchPartyName(v){
   if(v.partyType==='supplier'){const s=DB.suppliers.find(x=>x.id===v.partyId);return s?s.name:(v.partyName||'مورد');}
   return v.partyName||'حساب آخر';
 }
-const APP_BUILD='يومية-جديدة · 20/06 #62';
+const APP_BUILD='يومية-جديدة · 20/06 #63';
 let jrnDay=null,jrnBox='',jrnQ='';
 function journalEntries(day,boxId){
   const E=[];const sameDay=d=>(d||'').slice(0,10)===day;
