@@ -1051,6 +1051,10 @@ function cloudAddOrder(o){ if(!FS)return Promise.reject('no-cloud'); return FS.c
 function cloudFetchOrders(){ if(!FS)return Promise.resolve(null); return FS.collection('orders').get().then(s=>s.docs.map(d=>d.data())); }
 function cloudSetOrder(id,patch){ if(!FS)return Promise.resolve(); return FS.collection('orders').doc(String(id)).set(patch,{merge:true}); }
 function cloudDelOrder(id){ if(!FS)return Promise.resolve(); return FS.collection('orders').doc(String(id)).delete(); }
+function cloudAddCustPayment(p){ if(!FS)return Promise.reject('no-cloud'); return FS.collection('custpayments').doc(String(p.id)).set(p); }
+function cloudSetCustPayment(id,patch){ if(!FS)return Promise.resolve(); return FS.collection('custpayments').doc(String(id)).set(patch,{merge:true}); }
+function cloudFetchCustPayments(){ if(!FS)return Promise.resolve(null); return FS.collection('custpayments').get().then(s=>s.docs.map(d=>d.data())); }
+function cloudDelCustPayment(id){ if(!FS)return Promise.resolve(); return FS.collection('custpayments').doc(String(id)).delete(); }
 function cloudFetchRegistrations(){ if(!FS)return Promise.resolve(null); return FS.collection('registrations').get().then(s=>s.docs.map(d=>d.data())); }
 function cloudSetReg(id,patch){ if(!FS)return Promise.resolve(); return FS.collection('registrations').doc(String(id)).set(patch,{merge:true}); }
 function cloudDelReg(id){ if(!FS)return Promise.resolve(); return FS.collection('registrations').doc(String(id)).delete(); }
@@ -1133,7 +1137,7 @@ function cloudInit(){
   /* تسجيلات الزبائن: تحديث حيّ + إشعار بانتظار التوثيق */
   try{
     FS.collection('registrations').onSnapshot(snap=>{
-      const list=snap.docs.map(d=>d.data());
+      const list=snap.docs.map(d=>d.data()).filter(r=>r&&!r.deleted);
       DB.registrations=list;try{save();}catch(e){}
       if(current==='regs'){_regsCache=list.slice();if(typeof regRerender==='function')regRerender();}
       if(typeof updateRegBadge==='function')updateRegBadge();
@@ -1163,6 +1167,21 @@ function cloudInit(){
         if(pend.length&&newest>seen){try{showInAppNotif('🛒 طلب جديد',pend.length+' طلب بانتظار المراجعة في «الطلبات»');}catch(e){}}
       }
       window._ordInit=true;
+    }, e=>{});
+  }catch(e){}
+  /* مدفوعات الزبائن: تحديث حيّ + إشعار للمتجر */
+  try{
+    FS.collection('custpayments').onSnapshot(snap=>{
+      const list=snap.docs.map(d=>d.data()).filter(Boolean);
+      window._custPayReqs=list;
+      if(typeof updateCustPayBadge==='function')updateCustPayBadge();
+      const pend=list.filter(p=>(p.status||'pending')==='pending');
+      if(window._cpInit&&typeof CUR_USER!=='undefined'&&CUR_USER){
+        const newest=pend.length?Math.max.apply(null,pend.map(p=>new Date(p.date||0).getTime())):0;
+        const seen=Number(localStorage.getItem('sadaqa_seen_custpay')||0);
+        if(pend.length&&newest>seen){try{showInAppNotif('💵 دفعة من زبون','زبون أرسل إشعار دفع — راجِعه وأكِّد الاستلام');}catch(e){}}
+      }
+      window._cpInit=true;
     }, e=>{});
   }catch(e){}
 }
@@ -2004,7 +2023,11 @@ function delCustomer(id){
       DB._delCusts=DB._delCusts||{};DB._delCusts[key]=Date.now();
       DB.registrations=(DB.registrations||[]).filter(r=>regKey(r.cc,r.phone)!==key);
       if(window._regsCache)window._regsCache=window._regsCache.filter(r=>regKey(r.cc,r.phone)!==key);
-      try{cloudDelReg(key);}catch(e){}
+      // علّم الحساب محذوفاً وصفّر بياناته في السحابة → جهاز الزبون يلتقطها ويمسح كل شيء
+      try{cloudSetReg(key,{deleted:true,balance:0,points:0,statement:[],lastTxn:{id:uid('tx'),date:new Date().toISOString(),text:'__deleted__'}});}catch(e){}
+      // احذف طلباته (سحابة + محلي)
+      (DB.orders||[]).filter(o=>o.customerId===key).forEach(o=>{try{cloudDelOrder(o.id);}catch(e){}});
+      DB.orders=(DB.orders||[]).filter(o=>o.customerId!==key);
     }
     save();closeModal();toast('حُذف العميل وحسابه','ok');render();
     if(typeof updateRegBadge==='function')updateRegBadge();
@@ -3565,6 +3588,7 @@ function vCustomers(v){
     <div class="toolbar"><div class="search">${svg(I.search,17)}<input class="inp" id="cq" placeholder="بحث بالاسم أو الهاتف..." oninput="renderCustomers()"></div>
       <button class="btn" onclick="importContactsFile('customer')" title="استيراد عملاء من Excel">${svg(I.upload,17)} استيراد Excel</button>
       <button class="btn" onclick="remindDebtors()" title="تذكير العملاء المدينين عبر واتساب">${svg(I.wa,16)} تذكير المدينين</button>
+      <button class="btn" id="custPayBtn" onclick="openCustPayReviews()" title="مدفوعات الزبائن عبر التطبيق">${svg(I.wallet||I.cash,15)} مدفوعات الزبائن${pendingCustPays().length?(' <span class="badge" style="background:var(--danger);color:#fff">'+pendingCustPays().length+'</span>'):''}</button>
       <button class="btn btn-primary" onclick="editCustomer()">${svg(I.plus,17)} عميل جديد</button></div>
     <div id="custChips" style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
       <button class="chip ${custFilter==='all'?'active':''}" data-f="all" onclick="setCustFilter('all')">الكل</button>
@@ -3693,6 +3717,84 @@ function collectPayment(id){
       save();try{syncCustToReg(c);custTxn(custReg(c),'دفعة مسدّدة بمبلغ '+m(amt)+' · رصيدك: '+m(c.balance));}catch(e){}toast('تم تسجيل الدفعة','ok');render();
     }},{label:'إلغاء',fn:()=>true}]});
 }
+/* ===== تسديد/دفع من الزبون مع تأكيد المتجر ===== */
+let _cpProof=null,_cpApp='';
+function payDebtSheet(prefill){
+  const v=getVisitor();if(!v||!v.id){toast('سجّل حسابك أولاً','err');visitorRegister();return;}
+  _cpProof=null;_cpApp='';
+  const apps=(typeof payApps==='function')?payApps():[];
+  modal({title:'تسديد / دفع',size:'sm',body:`
+    <p class="muted" style="font-size:12.5px;margin-bottom:10px">ادفع المبلغ المستحق عليك (أو أضِف رصيداً لحسابك) عبر أحد تطبيقات الدفع، ثم أرسِل صورة إثبات الدفع ليؤكّدها المتجر ويُحدّث رصيدك.</p>
+    <div class="field"><label>المبلغ (${CUR()})</label><input class="inp" id="cp_amt" type="number" inputmode="numeric" placeholder="المبلغ" value="${prefill>0?prefill:''}"></div>
+    ${apps.length?`<div class="field" style="margin-top:10px"><label>تطبيق الدفع</label>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+        ${apps.map(a=>`<button type="button" class="btn" id="cpapp_${a.id}" style="justify-content:center;font-size:12px;padding:9px 4px" onclick="cpSelApp('${a.id}')">${esc(a.name)}</button>`).join('')}
+      </div><div id="cp_paynum" class="muted" style="font-size:12px;margin-top:8px"></div></div>`:`<div class="muted" style="font-size:12px;margin-top:8px">رقم الدفع: <b dir="ltr">${esc(DB.settings.payNumber||DB.settings.whatsapp||'')}</b></div>`}
+    <div class="field" style="margin-top:10px"><label>صورة إثبات الدفع</label>
+      <input type="file" id="cp_file" accept="image/*" onchange="cpPickProof(this)">
+      <div id="cp_proofPrev" style="margin-top:6px"></div></div>
+    <div class="field" style="margin-top:10px"><label>ملاحظة (اختياري)</label><input class="inp" id="cp_note" placeholder="مثال: تسديد فاتورة"></div>`,
+    actions:[{label:'إرسال الدفعة',primary:true,icon:I.check,fn:()=>submitCustPayment()},{label:'إلغاء',fn:()=>true}]});
+}
+function cpSelApp(id){_cpApp=id;(payApps()||[]).forEach(a=>{const el=document.getElementById('cpapp_'+a.id);if(el)el.className='btn'+(a.id===id?' btn-primary':'');});const b=boxes().find(x=>x.id===id);const pn=document.getElementById('cp_paynum');if(pn)pn.innerHTML=(b&&(b.payNum||DB.settings.payNumber))?('حوّل إلى الرقم: <b dir="ltr">'+esc(b.payNum||DB.settings.payNumber)+'</b>'):'';}
+function cpPickProof(inp){const f=inp.files&&inp.files[0];if(!f)return;downscaleImage(f,d=>{_cpProof=d;const pv=document.getElementById('cp_proofPrev');if(pv)pv.innerHTML='<img src="'+d+'" style="max-width:100%;border-radius:8px">';});}
+function submitCustPayment(){
+  const v=getVisitor()||{};const amt=parseFloat(val('cp_amt'))||0;
+  if(amt<=0){toast('أدخل مبلغاً صحيحاً','err');return false;}
+  if(!_cpProof){toast('أرفق صورة إثبات الدفع','err');return false;}
+  const appBox=boxes().find(b=>b.id===_cpApp);
+  const p={id:uid('cpr'),customerId:v.id,name:v.name||'',cc:v.cc||'222',phone:v.phone||'',amount:amt,
+    app:appBox?appBox.name:'',box:_cpApp||'',proof:_cpProof||'',note:(val('cp_note')||'').trim(),date:new Date().toISOString(),status:'pending'};
+  cloudAddCustPayment(p).then(()=>{}).catch(()=>{});
+  closeModal();
+  try{showInAppNotif('✅ تم إرسال دفعتك','سيؤكّد المتجر استلام المبلغ ثم يُحدّث رصيدك.');}catch(e){}
+  toast('أُرسلت الدفعة — بانتظار تأكيد المتجر','ok');return false;
+}
+function pendingCustPays(){return (window._custPayReqs||[]).filter(p=>p&&(p.status||'pending')==='pending');}
+function updateCustPayBadge(){const el=document.getElementById('custPayBtn');if(el){const n=pendingCustPays().length;el.innerHTML=svg(I.wallet||I.cash||I.money,15)+' مدفوعات الزبائن'+(n?(' <span class="badge b-ok" style="background:var(--danger);color:#fff">'+n+'</span>'):'');}}
+function openCustPayReviews(){
+  localStorage.setItem('sadaqa_seen_custpay',String(Date.now()));
+  const list=(window._custPayReqs||[]).slice().sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const pend=list.filter(p=>(p.status||'pending')==='pending');
+  const body=list.length?list.map(p=>{const st=p.status||'pending';return `<div style="border:1px solid var(--line);border-radius:12px;padding:11px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b>${esc(p.name||'زبون')}</b><b style="color:var(--primary-d);font-size:15px">${m(p.amount)}</b></div>
+      <div class="muted" style="font-size:12px" dir="ltr">+${esc(p.cc||'222')} ${esc(p.phone||'')}</div>
+      <div class="muted" style="font-size:12px">عبر: ${esc(p.app||'تطبيق دفع')}${p.note?(' · '+esc(p.note)):''}<br>${fmtDateTime(p.date)}</div>
+      ${p.proof?`<img src="${p.proof}" style="max-width:100%;border-radius:8px;margin-top:6px;cursor:zoom-in" onclick="window.open('${p.proof}','_blank')">`:'<div class="muted" style="font-size:12px;margin-top:4px">⚠️ لا صورة إثبات</div>'}
+      ${st==='pending'?`<div style="background:#FEF9C3;border-radius:8px;padding:7px;margin-top:7px;font-size:12px;text-align:center">هل وصلك المبلغ فعلاً؟ أكِّد فقط بعد التحقّق.</div>
+        <div style="display:flex;gap:6px;margin-top:7px">
+        <button class="btn btn-sm" style="flex:1;justify-content:center;background:#16a34a;color:#fff;border:0" onclick="confirmCustPayment('${p.id}')">✔ نعم وصلني</button>
+        <button class="btn btn-sm" style="flex:1;justify-content:center;color:var(--danger)" onclick="rejectCustPayment('${p.id}')">✕ لم يصل</button></div>`
+        :`<div style="margin-top:6px"><span class="badge" style="${st==='confirmed'?'background:#DCFCE7;color:#15803D':'background:#FEE2E2;color:#B91C1C'}">${st==='confirmed'?'مؤكَّد ✔':'مرفوض'}</span>
+           <button class="btn btn-xs" style="margin-inline-start:8px;color:var(--danger)" onclick="cloudDelCustPayment('${p.id}');(window._custPayReqs=(window._custPayReqs||[]).filter(x=>x.id!=='${p.id}'));openCustPayReviews()">حذف</button></div>`}
+    </div>`;}).join(''):'<div class="empty" style="padding:24px">'+svg(I.wallet||I.cash,38)+'<b>لا مدفوعات من الزبائن بعد</b><span class="muted">عندما يرسل زبون دفعة من التطبيق تظهر هنا للتأكيد.</span></div>';
+  modal({title:'مدفوعات الزبائن'+(pend.length?(' ('+pend.length+')'):''),size:'lg',body,actions:[{label:'إغلاق',primary:true,fn:()=>true}]});
+}
+function confirmCustPayment(id){
+  const p=(window._custPayReqs||[]).find(x=>x.id===id);if(!p)return;
+  const ph=digitsOnly(p.phone||''),cc=(p.cc||'222');
+  let c=DB.customers.find(x=>digitsOnly(x.phone||'')===ph&&(x.cc||'222')===cc);
+  if(!c){c={id:uid('c'),name:p.name||('زبون '+p.phone),cc,phone:p.phone,phone2:'',fax:'',address:'',image:'',balance:0,fromReg:true};DB.customers.push(c);}
+  const amt=Number(p.amount)||0;const box=(p.box&&boxes().some(b=>b.id===p.box))?p.box:defBox();
+  c.balance=(c.balance||0)-amt;
+  const vno=DB.seq.voucher++;const vid=uid('vch');
+  DB.vouchers.push({id:vid,no:vno,kind:'receipt',partyType:'customer',partyId:c.id,partyName:c.name,amount:amt,box,date:todayISO()+'T'+new Date().toISOString().slice(11),note:p.note||'دفعة من الزبون عبر التطبيق'});
+  DB.custPays.push({id:uid('cp'),custId:c.id,amount:amt,date:todayISO(),note:(p.note||'دفعة عبر التطبيق')+(p.app?(' ('+p.app+')'):''),box,voucher:vid});
+  addCash('in',amt,'دفعة من الزبون '+c.name+' عبر '+(p.app||'التطبيق'),vid,box);
+  save();
+  try{syncCustToReg(c);custTxn(custReg(c),'✅ تم تأكيد دفعتك بمبلغ '+m(amt)+' · رصيدك الآن: '+m(c.balance));}catch(e){}
+  cloudSetCustPayment(id,{status:'confirmed',confirmedAt:Date.now()}).catch(()=>{});
+  if(p)p.status='confirmed';
+  toast('تم تأكيد الدفعة وتحديث رصيد الزبون','ok');if(typeof render==='function')render();openCustPayReviews();
+}
+function rejectCustPayment(id){
+  const p=(window._custPayReqs||[]).find(x=>x.id===id);if(!p)return;
+  confirmDlg('رفض الدفعة؟','أكّد فقط إن لم يصلك المبلغ. سيُشعَر الزبون بأنّ دفعته لم تُؤكَّد.',()=>{
+    cloudSetCustPayment(id,{status:'rejected'}).catch(()=>{});if(p)p.status='rejected';
+    try{custTxn(p.customerId,'⚠️ لم يُؤكَّد استلام دفعتك بمبلغ '+m(p.amount)+'. يُرجى التواصل مع المتجر.');}catch(e){}
+    toast('رُفضت الدفعة','ok');openCustPayReviews();
+  });
+}
 
 /* ---------- الموردون ---------- */
 function vSuppliers(v){
@@ -3726,7 +3828,7 @@ function vchPartyName(v){
   if(v.partyType==='supplier'){const s=DB.suppliers.find(x=>x.id===v.partyId);return s?s.name:(v.partyName||'مورد');}
   return v.partyName||'حساب آخر';
 }
-const APP_BUILD='يومية-جديدة · 20/06 #73';
+const APP_BUILD='يومية-جديدة · 20/06 #75';
 let jrnDay=null,jrnBox='',jrnQ='';
 function journalEntries(day,boxId){
   const E=[];const sameDay=d=>(d||'').slice(0,10)===day;
@@ -4945,7 +5047,7 @@ function convertOrder(id){
 function delOrder(id){confirmDlg('حذف الطلب؟','سيُحذف الطلب نهائياً.',()=>{DB.orders=(DB.orders||[]).filter(x=>x.id!==id);cloudDelOrder(id).catch(()=>{});save();updateOrderBadge();renderOrders();toast('تم الحذف','ok');});}
 function orderWa(id){const o=(DB.orders||[]).find(x=>x.id===id);if(!o)return;waOpen(waNum(o.cc,o.phone),'مرحباً '+o.name+'، بخصوص طلبك #'+o.no+' في '+(DB.settings.name||'مؤسسة الصداقة')+'.');}
 function ensureCustomerForReg(r){
-  if(!r||!r.phone)return false;
+  if(!r||!r.phone||r.deleted)return false;
   const key=regKey(r.cc,r.phone);
   if(DB._delCusts&&DB._delCusts[key]!=null){const t=DB._delCusts[key];if(!r.date||new Date(r.date).getTime()<=t)return false;delete DB._delCusts[key];}
   const ex=DB.customers.find(c=>digitsOnly(c.phone||'')===digitsOnly(r.phone)&&(c.cc||'222')===(r.cc||'222'));
@@ -4955,9 +5057,9 @@ function ensureCustomerForReg(r){
 }
 function syncRegsToCustomers(list){let ch=false;(list||[]).forEach(r=>{if(ensureCustomerForReg(r))ch=true;});if(ch)save();}
 function regsRefresh(){
-  const fill=list=>{_regsCache=(list||[]).slice();syncRegsToCustomers(_regsCache);const el=document.getElementById('regsList');if(el)el.innerHTML=regsTable(_regsCache);if(typeof updateRegBadge==='function')updateRegBadge();};
+  const fill=list=>{list=(list||[]).filter(r=>r&&!r.deleted);_regsCache=list.slice();syncRegsToCustomers(_regsCache);const el=document.getElementById('regsList');if(el)el.innerHTML=regsTable(_regsCache);if(typeof updateRegBadge==='function')updateRegBadge();};
   const p=cloudFetchRegistrations();
-  if(p&&p.then){p.then(list=>{if(list===null){fill(DB.registrations||[]);}else{DB.registrations=list;save();fill(list);}}).catch(()=>fill(DB.registrations||[]));}
+  if(p&&p.then){p.then(list=>{if(list===null){fill(DB.registrations||[]);}else{DB.registrations=list.filter(r=>r&&!r.deleted);save();fill(DB.registrations);}}).catch(()=>fill(DB.registrations||[]));}
   else fill(DB.registrations||[]);
 }
 function regsTable(list){
@@ -6748,15 +6850,30 @@ function syncVisitorVerification(){
 }
 let _myPoints=null;
 function myPointsNow(){const v=getVisitor();if(_myPoints!=null)return _myPoints;return v?loyPoints(v.id):0;}
+function accountDeletedCleanup(){
+  try{const v=getVisitor();if(v&&v.id){DB.orders=(DB.orders||[]).filter(o=>o.customerId!==v.id);}}catch(e){}
+  try{CART=[];saveCart();updateCartBadge();}catch(e){}
+  try{localStorage.removeItem('sadaqa_visitor');}catch(e){}
+  try{localStorage.removeItem('sadaqa_seen_txn');}catch(e){}
+  _myPoints=null;
+  if(window._accWatch){try{window._accWatch();}catch(e){}window._accWatch=null;}
+  if(window._ordWatch){Object.keys(window._ordWatch).forEach(k=>{try{window._ordWatch[k]();}catch(e){}});window._ordWatch={};}
+  try{save();}catch(e){}
+  try{updateMenuIdentity();}catch(e){}
+  try{closeModal();}catch(e){}
+  try{showInAppNotif('تم إنهاء حسابك','للاستفسار تواصل مع المتجر.');}catch(e){}
+  try{showStore();}catch(e){}
+}
 function watchAccount(){
   if(!FS)return;const v=getVisitor();if(!v||!v.id)return;
   if(window._accWatch){try{window._accWatch();}catch(e){}window._accWatch=null;}
   try{window._accWatch=FS.collection('registrations').doc(String(v.id)).onSnapshot(d=>{
     const reg=d&&d.exists?d.data():null;if(!reg)return;
+    if(reg.deleted){accountDeletedCleanup();return;}
     if(reg.points!=null){_myPoints=Number(reg.points)||0;const el=document.getElementById('myLoyPts');if(el)el.textContent=money(_myPoints);}
     if(reg.lastTxn&&reg.lastTxn.id){const seen=localStorage.getItem('sadaqa_seen_txn')||'';
       if(reg.lastTxn.id!==seen){localStorage.setItem('sadaqa_seen_txn',reg.lastTxn.id);
-        if(seen){try{showInAppNotif('🔔 تحديث على حسابك',reg.lastTxn.text||'');}catch(e){}}}}
+        if(seen&&reg.lastTxn.text&&reg.lastTxn.text!=='__deleted__'){try{showInAppNotif('🔔 تحديث على حسابك',reg.lastTxn.text||'');}catch(e){}}}}
   },e=>{});}catch(e){}
 }
 function pickVrImg(input){const f=input.files[0];if(!f)return;downscaleImage(f,uri=>{if(!uri){toast('تعذّر قراءة الصورة','err');return;}_vrImg=uri;const a=document.getElementById('vrAva');if(a){a.style.backgroundImage=`url(${uri})`;a.innerHTML='';}});input.value='';}
@@ -6811,9 +6928,15 @@ function visitorRegister(){
         if(phone.length<6){toast('أدخل رقم هاتف صحيح','err');return false;}
         const id=regKey(cc,phone);
         const ownSame=(v&&v.id===id); // نفس حساب هذا الجهاز
-        const finishSave=()=>{
-          const verified=(v.phone===phone&&v.verified)?true:false;
-          const reg={id,name,cc,phone,verified,date:new Date().toISOString(),source:'store',image:_vrImg||''};
+        const finishSave=(wasDeleted)=>{
+          if(wasDeleted){
+            try{DB.orders=(DB.orders||[]).filter(o=>o.customerId!==id);}catch(e){}
+            try{CART=[];saveCart();updateCartBadge();}catch(e){}
+            try{localStorage.removeItem('sadaqa_seen_txn');}catch(e){}
+            _myPoints=null;
+          }
+          const verified=(v.phone===phone&&v.verified&&!wasDeleted)?true:false;
+          const reg={id,name,cc,phone,verified,date:new Date().toISOString(),source:'store',image:_vrImg||'',deleted:false,balance:0,points:0,statement:[]};
           try{const ref=localStorage.getItem('sadaqa_ref')||'';if(ref&&ref!==id&&!(v&&v.verified))reg.referrer=ref;}catch(e){}
           setVisitor({id,name,cc,phone,verified,image:_vrImg||''});
           cloudAddRegistration(reg).catch(()=>{});
@@ -6822,18 +6945,19 @@ function visitorRegister(){
           setTimeout(()=>{try{watchVerification();}catch(e){}try{watchAccount();}catch(e){}},900);
           setTimeout(awaitingActivationScreen,80);
         };
-        // منع تكرار الرقم: كل رقم يُسجَّل مرة واحدة فقط
-        if(ownSame){finishSave();return false;}
+        // منع تكرار الرقم + معالجة الحساب المحذوف
         toast('جارٍ التحقّق من الرقم...');
         const chk=cloudGetReg(id);
-        if(chk&&chk.then){
-          chk.then(existing=>{
-            if(existing&&existing.name){
-              toast('هذا الرقم مسجّل مسبقاً باسم «'+existing.name+'». سجّل الدخول بدل إنشاء حساب جديد.','err');
-              setTimeout(()=>{closeModal();customerLogin();},1400);
-            }else finishSave();
-          }).catch(()=>finishSave());
-        }else finishSave();
+        const proceed=existing=>{
+          const wasDeleted=!!(existing&&existing.deleted);
+          if(existing&&existing.name&&!existing.deleted&&!ownSame){
+            toast('هذا الرقم مسجّل مسبقاً باسم «'+existing.name+'». سجّل الدخول بدل إنشاء حساب جديد.','err');
+            setTimeout(()=>{closeModal();customerLogin();},1400);return;
+          }
+          finishSave(wasDeleted);
+        };
+        if(chk&&chk.then)chk.then(proceed).catch(()=>finishSave(false));
+        else proceed(null);
         return false;
       }},
       done?{label:'تسجيل الخروج',fn:()=>{customerLogout();return true;}}:null,
@@ -6913,7 +7037,7 @@ function renderMyStmt(v,entries,bal,loading){
     </table>
     ${loading?'<p class="muted" style="font-size:11.5px;margin-top:8px;text-align:center">⏳ يتم تحديث الكشف من المتجر...</p>':(!entries.length?'<p class="muted" style="font-size:12px;margin-top:8px;text-align:center">لا توجد حركات بعد على حسابك.</p>':'')}
     <p class="muted" style="font-size:11px;margin-top:8px">للاستفسار عن حسابك تواصل معنا عبر واتساب.</p></div>`;
-  modal({title:'كشف حسابي',size:'lg',body,actions:[{label:'طباعة',icon:I.print,fn:()=>{printEl('myStmt');return false;}},{label:'إغلاق',primary:true,fn:()=>true}]});
+  modal({title:'كشف حسابي',size:'lg',body,actions:[{label:'تسديد / دفع',primary:true,icon:I.wallet||I.check,fn:()=>{closeModal();setTimeout(()=>payDebtSheet(bal>0?bal:0),150);return false;}},{label:'طباعة',icon:I.print,fn:()=>{printEl('myStmt');return false;}},{label:'إغلاق',fn:()=>true}]});
 }
 function openAccountSheet(){
   const v=getVisitor();const reg=!!(v&&v.id);
@@ -6976,7 +7100,7 @@ function requestLoginCode(resend){
   toast('جارٍ إرسال الطلب...','ok');
   const p=cloudGetReg(id);
   const handle=reg=>{
-    if(!reg||!reg.name){toast('لا يوجد حساب بهذا الرقم — سجّل حساباً جديداً','err');return;}
+    if(!reg||!reg.name||reg.deleted){toast('لا يوجد حساب بهذا الرقم — سجّل حساباً جديداً','err');return;}
     try{cloudSetReg(id,{loginReqAt:Date.now(),loginStatus:'pending',loginName:reg.name});}catch(e){}
     const ob=document.getElementById('otpBox');if(ob)ob.style.display='block';
     const btn=document.getElementById('otpBtn');if(btn){btn.innerHTML=svg(I.check,16)+' تأكيد وتسجيل الدخول';btn.setAttribute('onclick','confirmLoginCode()');}
@@ -6992,6 +7116,7 @@ function confirmLoginCode(){
   toast('جارٍ التحقّق...','ok');
   const p=cloudGetReg(id);
   const verify=reg=>{
+    if(reg&&reg.deleted){toast('هذا الحساب لم يعد موجوداً — سجّل حساباً جديداً','err');return;}
     if(!reg||reg.loginStatus!=='sent'||!reg.loginCodeHash){toast('لم يصلك الرمز بعد — انتظر رسالة واتساب من المتجر','err');return;}
     if(reg.loginCodeExp&&Date.now()>reg.loginCodeExp){toast('انتهت صلاحية الرمز — اطلب رمزاً جديداً','err');return;}
     if(otpHash(id+':'+code)!==reg.loginCodeHash){toast('الرمز غير صحيح','err');return;}
