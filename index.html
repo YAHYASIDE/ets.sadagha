@@ -1915,36 +1915,63 @@ function vStore(v){
   <div class="panel"><div class="tbl-wrap" id="prodTable"></div></div>`;
   renderChips();renderProducts();
 }
-function manageCats(){
-  const body=()=>`<div style="display:flex;gap:6px;margin-bottom:12px">
+let _catSelMode=false,_catSel=new Set();
+function manageCats(){_catSelMode=false;_catSel.clear();
+  modal({title:'إدارة الأقسام',size:'sm',body:catMgBody(),actions:[{label:'إغلاق',primary:true,fn:()=>{render();return true;}}]});}
+function catMgBody(){
+  return `<div style="display:flex;gap:6px;margin-bottom:10px">
       <input class="inp" id="newCatName" placeholder="اسم قسم جديد" style="flex:1">
       <button class="btn btn-primary btn-sm" onclick="addCatQuick()">${svg(I.plus,15)} إضافة</button></div>
-    <div id="catMgList">${(DB.categories||[]).map(c=>{const n=DB.products.filter(p=>p.category===c).length;
-      return `<div style="display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-bottom:7px">
-        <b style="flex:1">${esc(c)}</b><span class="muted" style="font-size:12px">${n} مادة</span>
-        <button class="btn btn-icon btn-ghost btn-sm" title="إعادة تسمية" onclick="renameCat('${esc(c)}')">${svg(I.edit,15)}</button>
-        <button class="btn btn-icon btn-ghost btn-sm" title="حذف" style="color:var(--danger)" onclick="delCat('${esc(c)}')">${svg(I.trash,15)}</button>
-      </div>`;}).join('')||'<div class="empty" style="padding:18px">لا أقسام بعد</div>'}</div>`;
-  modal({title:'إدارة الأقسام',size:'sm',body:body(),actions:[{label:'إغلاق',primary:true,fn:()=>{render();return true;}}]});
+    <div style="display:flex;gap:6px;margin-bottom:10px">
+      <button class="btn btn-sm" onclick="toggleCatSel()">${svg(I.check,14)} ${_catSelMode?'إلغاء التحديد':'تحديد أصناف'}</button>
+      ${_catSelMode?`<button class="btn btn-sm" onclick="catSelAll()">تحديد الكل</button><button class="btn btn-sm" style="background:var(--danger);color:#fff;border-color:var(--danger)" onclick="delSelCats()">${svg(I.trash,14)} حذف المحدّد (<span id="catSelN">${_catSel.size}</span>)</button>`:''}
+    </div>
+    <div id="catMgList">${catMgList()}</div>`;
+}
+function catMgList(){
+  return (DB.categories||[]).map(c=>{const n=DB.products.filter(p=>p.category===c).length;
+    return `<div style="display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-bottom:7px">
+      ${_catSelMode?`<input type="checkbox" ${_catSel.has(c)?'checked':''} onchange="catSelToggle('${esc(c)}',this.checked)" style="width:17px;height:17px">`:''}
+      <b style="flex:1">${esc(c)}</b><span class="muted" style="font-size:12px">${n} مادة</span>
+      <button class="btn btn-icon btn-ghost btn-sm" title="إعادة تسمية" onclick="renameCat('${esc(c)}')">${svg(I.edit,15)}</button>
+      <button class="btn btn-icon btn-ghost btn-sm" title="حذف القسم ومواده" style="color:var(--danger)" onclick="delCat('${esc(c)}')">${svg(I.trash,15)}</button>
+    </div>`;}).join('')||'<div class="empty" style="padding:18px">لا أقسام بعد</div>';
+}
+function catMgRefresh(){const el=document.getElementById('modalRoot');if(el)el.innerHTML=catMgBody();}
+function toggleCatSel(){_catSelMode=!_catSelMode;_catSel.clear();catMgRefresh();}
+function catSelToggle(c,on){if(on)_catSel.add(c);else _catSel.delete(c);const n=document.getElementById('catSelN');if(n)n.textContent=_catSel.size;}
+function catSelAll(){const all=(DB.categories||[]);const everyone=all.length&&all.every(c=>_catSel.has(c));_catSel.clear();if(!everyone)all.forEach(c=>_catSel.add(c));catMgRefresh();}
+function _deleteCatsWithProducts(cats){
+  const ids=DB.products.filter(p=>cats.includes(p.category)).map(p=>p.id);
+  ids.forEach(id=>{try{cloudDelProduct(id);}catch(e){}});
+  DB.products=DB.products.filter(p=>!cats.includes(p.category));
+  DB.categories=(DB.categories||[]).filter(x=>!cats.includes(x));
+  cats.forEach(c=>{if(DB.catUnits)delete DB.catUnits[c];});
+  save();try{cloudPutMeta&&cloudPutMeta();}catch(e){}
+  return ids.length;
+}
+function delCat(c){
+  const n=DB.products.filter(p=>p.category===c).length;
+  confirmDlg('حذف قسم «'+c+'» وكل مواده؟',n?('سيُحذف القسم و'+n+' مادة بداخله نهائياً.'):'لا مواد بداخله.',()=>{
+    _deleteCatsWithProducts([c]);toast('حُذف القسم ومواده','ok');manageCats();
+  });
+}
+function delSelCats(){
+  const cats=[..._catSel];if(!cats.length){toast('لم تحدّد أي صنف','err');return;}
+  const n=DB.products.filter(p=>cats.includes(p.category)).length;
+  confirmDlg('حذف '+cats.length+' صنف؟',n?('سيُحذف معها '+n+' مادة نهائياً. لا يمكن التراجع.'):'لا مواد بداخلها.',()=>{
+    _deleteCatsWithProducts(cats);_catSel.clear();_catSelMode=false;toast('تم حذف الأصناف وموادها','ok');manageCats();
+  });
 }
 function addCatQuick(){const nm=(val('newCatName')||'').trim();if(!nm){toast('اكتب اسم القسم','err');return;}
   if(DB.categories.includes(nm)){toast('القسم موجود','err');return;}
-  DB.categories.push(nm);save();cloudPutMeta&&cloudPutMeta();toast('تمت الإضافة','ok');manageCats();}
+  DB.categories.push(nm);save();try{cloudPutMeta&&cloudPutMeta();}catch(e){}toast('تمت الإضافة','ok');catMgRefresh();}
 function renameCat(old){
   modal({title:'إعادة تسمية القسم',size:'sm',body:`<div class="field"><label>الاسم الجديد لـ «${esc(old)}»</label><input class="inp" id="renCat" value="${esc(old)}"></div>`,
     actions:[{label:'حفظ',primary:true,fn:()=>{const nn=(val('renCat')||'').trim();if(!nn){toast('اكتب الاسم','err');return false;}
       DB.categories=DB.categories.map(c=>c===old?nn:c);DB.products.forEach(p=>{if(p.category===old)p.category=nn;});
       if(DB.catUnits&&DB.catUnits[old]){DB.catUnits[nn]=DB.catUnits[old];delete DB.catUnits[old];}
-      save();cloudPutMeta&&cloudPutMeta();DB.products.forEach(p=>{if(p.category===nn)cloudPutProduct(p);});toast('تم','ok');manageCats();return true;}},{label:'إلغاء',fn:()=>true}]});
-}
-function delCat(c){
-  const n=DB.products.filter(p=>p.category===c).length;
-  confirmDlg('حذف قسم «'+c+'»؟',n?('فيه '+n+' مادة — ستبقى المواد لكن دون قسم. يمكنك تغيير قسمها لاحقاً.'):'',()=>{
-    DB.categories=DB.categories.filter(x=>x!==c);
-    DB.products.forEach(p=>{if(p.category===c){p.category='';cloudPutProduct(p);}});
-    if(DB.catUnits)delete DB.catUnits[c];
-    save();cloudPutMeta&&cloudPutMeta();toast('حُذف القسم','ok');manageCats();
-  });
+      save();try{cloudPutMeta&&cloudPutMeta();}catch(e){}DB.products.forEach(p=>{if(p.category===nn)cloudPutProduct(p);});toast('تم','ok');manageCats();return true;}},{label:'إلغاء',fn:()=>true}]});
 }
 function delCustomer(id){
   const c=DB.customers.find(x=>x.id===id);if(!c)return;
@@ -2857,6 +2884,7 @@ function invSave(){
   }else if(isCr){payments.forEach(p=>{const pa=Number(p.amount)||0;if(pa>0)addCash('in',pa,(editing?'تعديل دفعة فاتورة #':'دفعة فاتورة آجلة #')+no,sale.id,p.box||saleBox,sale.date);});}
   else if(paid>0)addCash('in',paid,(editing?'تعديل فاتورة #':'بيع #')+no,sale.id,saleBox,sale.date);
   save();_aff.forEach(p=>cloudPutProduct(p));
+  if(cust&&!isReturn){const _lk=custReg(cust);if(_lk){const _earned=loyEarn(_lk,net,'كسب من فاتورة #'+no);custTxn(_lk,'فاتورة #'+no+' بمبلغ '+m(net)+(_earned?(' · +'+_earned+' '+loyName()):''));if(_earned>0)toast('مُنح الزبون '+_earned+' '+loyName(),'ok');}}
   editSaleId='';cart=[];saleCustomer='';_pickedId='';invPayments=[];invMin=false;
   toast(editing?('تم تعديل الفاتورة #'+no):(isReturn?('تم تسجيل مرتجع البيع #'+no+' — أُعيدت المواد للمخزن'):('تم حفظ الفاتورة #'+no)),'ok');
   render();
@@ -3667,7 +3695,7 @@ function vchPartyName(v){
   if(v.partyType==='supplier'){const s=DB.suppliers.find(x=>x.id===v.partyId);return s?s.name:(v.partyName||'مورد');}
   return v.partyName||'حساب آخر';
 }
-const APP_BUILD='يومية-جديدة · 20/06 #59';
+const APP_BUILD='يومية-جديدة · 20/06 #62';
 let jrnDay=null,jrnBox='',jrnQ='';
 function journalEntries(day,boxId){
   const E=[];const sameDay=d=>(d||'').slice(0,10)===day;
@@ -4798,6 +4826,8 @@ function loyRedeemVal(){return Number(loyCfg().redeemValue)||1;}
 function loyPoints(key){if(!key)return 0;const r=DB.loyalty[key];return r?Math.max(0,Number(r.points)||0):0;}
 function loyAdd(key,delta,reason,date){if(!key||!delta)return;const r=DB.loyalty[key]||(DB.loyalty[key]={points:0,history:[]});r.points=Math.max(0,(Number(r.points)||0)+delta);r.history=r.history||[];r.history.push({date:date||todayISO(),delta,reason:reason||'',balance:r.points});}
 function loyKeyCust(c){return (c&&c.phone)?regKey(c.cc,c.phone):'';}
+function custReg(c){return (c&&c.phone)?regKey(c.cc,c.phone):'';}
+function custTxn(key,text,extra){if(!key)return;const patch=Object.assign({points:loyPoints(key),lastTxn:{id:uid('tx'),date:new Date().toISOString(),text:text||''}},extra||{});try{if(typeof cloudSetReg==='function')cloudSetReg(key,patch);}catch(e){}}
 function loyEarn(key,amount,reason){if(!loyOn()||!key)return 0;const pts=Math.floor((Number(amount)||0)*loyEarnRate()/100);if(pts>0){loyAdd(key,pts,reason||'كسب من شراء');try{if(typeof cloudSetReg==='function')cloudSetReg(key,{points:loyPoints(key)});}catch(e){}}return pts;}
 function loyManage(key,name){
   if(!key){toast('لا رقم هاتف لهذا العميل','err');return;}
@@ -4811,6 +4841,7 @@ function loyManage(key,name){
       if(op==='sub'&&n>loyPoints(key)){toast('النقاط غير كافية','err');return false;}
       loyAdd(key,op==='sub'?-n:n,(val('loy_note')||'').trim()||(op==='sub'?'خصم يدوي':'إضافة يدوية'));
       try{if(typeof cloudSetReg==='function')cloudSetReg(key,{points:loyPoints(key)});}catch(e){}
+      custTxn(key,(op==='sub'?('خُصم '+n+' '+loyName()):('أُضيف '+n+' '+loyName()))+' · رصيدك: '+money(loyPoints(key)));
       save();toast('تم — الرصيد: '+money(loyPoints(key))+' '+loyName(),'ok');render();return true;}},{label:'إغلاق',fn:()=>true}]});
 }
 function convertOrder(id){
@@ -4846,6 +4877,7 @@ function convertOrder(id){
       if(Number(o.pointsUsed)>0)loyAdd(o.customerId,-Number(o.pointsUsed),'استبدال في طلب #'+o.no);
       const earned=loyEarn(o.customerId,goodsTotal,'كسب من طلب #'+o.no);
       if(earned>0)toast('مُنح الزبون '+earned+' '+loyName(),'ok');
+      custTxn(o.customerId,'طلبك #'+o.no+' أصبح فاتورة بمبلغ '+m(total)+(earned?(' · +'+earned+' '+loyName()):''));
     }
     save();updateOrderBadge();toast('تم تحويل الطلب إلى فاتورة #'+no,'ok');
     if(current==='orders')renderOrders();
@@ -4887,7 +4919,7 @@ function regRerender(){const el=document.getElementById('regsList');if(el)el.inn
 function regVerify(id){const r=regFind(id);if(!r)return;r.verified=true;cloudSetReg(id,{verified:true}).catch(()=>{});
   // مكافأة الدعوة: امنح المُحيل نقاطاً عند تأكيد المدعوّ (مرة واحدة)
   try{const ref=r.referrer;const bonus=(DB.settings.loyalty&&DB.settings.loyalty.referBonus)||0;
-    if(ref&&ref!==id&&bonus>0&&!DB.referrals[id]){DB.referrals[id]=ref;loyAdd(ref,bonus,'دعوة صديق: '+(r.name||''));try{cloudSetReg(ref,{points:loyPoints(ref)});}catch(e){}toast('مُنح صاحب الدعوة '+bonus+' '+loyName(),'ok');}
+    if(ref&&ref!==id&&bonus>0&&!DB.referrals[id]){DB.referrals[id]=ref;loyAdd(ref,bonus,'دعوة صديق: '+(r.name||''));try{cloudSetReg(ref,{points:loyPoints(ref)});}catch(e){}custTxn(ref,'🎁 مكافأة دعوة صديق: +'+bonus+' '+loyName()+' · رصيدك: '+money(loyPoints(ref)));toast('مُنح صاحب الدعوة '+bonus+' '+loyName(),'ok');}
   }catch(e){}
   regToCustomer(id,true);toast('تم تأكيد الزبون وإضافته للعملاء','ok');regRerender();if(typeof updateRegBadge==='function')updateRegBadge();}
 function regSendCode(id){const r=regFind(id);if(!r)return;const code=r.code||String(Math.floor(1000+Math.random()*9000));r.code=code;cloudSetReg(id,{code}).catch(()=>{});waOpen(waNum(r.cc,r.phone),`مرحباً ${r.name}، كود التأكيد الخاص بك في ${DB.settings.name||'مؤسسة الصداقة'}: ${code}`);}
@@ -6401,22 +6433,16 @@ function watchMyOrders(){
 }
 function orderReviewScreen(o){
   CART=[];saveCart();updateCartBadge();try{renderStoreGrid();renderDeals();}catch(e){}closeCart();
-  const num=storeWaNumber();
-  const waMsg='مرحباً، لقد أتممت الطلب #'+o.no+' في '+(DB.settings.name||'مؤسسة الصداقة')+'. الإجمالي: '+money(o.total)+' '+CUR()+'.';
-  const waLink=`https://wa.me/${num}?text=${encodeURIComponent(waMsg)}`;
   modal({size:'sm',body:`
     <div style="text-align:center;padding:6px 4px 2px">
       <div style="width:74px;height:74px;border-radius:50%;background:#FEF9C3;display:grid;place-items:center;margin:0 auto 14px;font-size:34px">⏳</div>
       <h2 style="font-size:21px;font-weight:800;margin:0 0 10px">طلبك قيد المراجعة</h2>
       <p style="font-size:14px;font-weight:700;margin:0 0 6px">تم استلام طلبك بنجاح! (#${o.no})</p>
-      <p class="muted" style="font-size:13px;line-height:1.85;margin:0 0 14px">سيراجع المتجر طلبك ويؤكّده قريباً، وتصلك رسالة عند تجهيزه.<br>الإجمالي: <b>${money(o.total)} ${CUR()}</b>${o.payMode!=='cod'?`<br>مدفوع: ${money(o.deposit)} ${CUR()}`:''}${(o.remaining>0&&o.payMode!=='cod')?` · الباقي عند الاستلام: ${money(o.remaining)} ${CUR()}`:''}</p>
+      <p class="muted" style="font-size:13px;line-height:1.85;margin:0 0 14px">سيراجع المتجر طلبك ويؤكّده قريباً، وتصلك إشعارات بتحديثات حالته.<br>الإجمالي: <b>${money(o.total)} ${CUR()}</b>${o.payMode!=='cod'?`<br>مدفوع: ${money(o.deposit)} ${CUR()}`:''}${(o.remaining>0&&o.payMode!=='cod')?` · الباقي عند الاستلام: ${money(o.remaining)} ${CUR()}`:''}</p>
     </div>`,
     actions:[
-      {label:'تواصل مع المتجر عبر واتساب',primary:true,icon:I.wa,fn:()=>{window.open(waLink,'_blank');return false;}},
-      {label:'متابعة طلبي',fn:()=>{closeModal();setTimeout(openMyOrders,150);return false;}},
-      {label:'الصفحة الرئيسية',fn:()=>{showStore();return true;}}]});
-  // فتح واتساب المتجر تلقائياً
-  setTimeout(()=>{try{window.open(waLink,'_blank');}catch(e){}},250);
+      {label:'متابعة طلبي',primary:true,icon:I.store,fn:()=>{closeModal();setTimeout(openMyOrders,150);return false;}},
+      {label:'الرجوع إلى القائمة الرئيسية',fn:()=>{showStore();return true;}}]});
 }
 function sendOrderWa(ctx,o){
   let txt='*'+t('orderMsg')+'* (#'+o.no+')\n\n';
@@ -6612,7 +6638,6 @@ function watchVerification(){
   if(!FS)return;
   const v=getVisitor();
   if(!v||!v.id||v.verified)return;
-  if(window._verWatch){try{window._verWatch();}catch(e){}window._verWatch=null;}
   try{
     window._verWatch=FS.collection('registrations').doc(String(v.id)).onSnapshot(d=>{
       const reg=d&&d.exists?d.data():null;
@@ -6629,14 +6654,47 @@ function syncVisitorVerification(){
   const p=cloudGetReg(v.id);
   if(p&&p.then)p.then(reg=>{if(reg&&reg.verified&&!v.verified){v.verified=true;if(reg.name)v.name=reg.name;setVisitor(v);updateMenuIdentity();notifyVerified(v.name);}}).catch(()=>{});
   watchVerification();
+  watchAccount();
 }
-let _vrImg=null;
+let _myPoints=null;
+function myPointsNow(){const v=getVisitor();if(_myPoints!=null)return _myPoints;return v?loyPoints(v.id):0;}
+function watchAccount(){
+  if(!FS)return;const v=getVisitor();if(!v||!v.id)return;
+  if(window._accWatch){try{window._accWatch();}catch(e){}window._accWatch=null;}
+  try{window._accWatch=FS.collection('registrations').doc(String(v.id)).onSnapshot(d=>{
+    const reg=d&&d.exists?d.data():null;if(!reg)return;
+    if(reg.points!=null){_myPoints=Number(reg.points)||0;const el=document.getElementById('myLoyPts');if(el)el.textContent=money(_myPoints);}
+    if(reg.lastTxn&&reg.lastTxn.id){const seen=localStorage.getItem('sadaqa_seen_txn')||'';
+      if(reg.lastTxn.id!==seen){localStorage.setItem('sadaqa_seen_txn',reg.lastTxn.id);
+        if(seen){try{showInAppNotif('🔔 تحديث على حسابك',reg.lastTxn.text||'');}catch(e){}}}}
+  },e=>{});}catch(e){}
+}
 function pickVrImg(input){const f=input.files[0];if(!f)return;downscaleImage(f,uri=>{if(!uri){toast('تعذّر قراءة الصورة','err');return;}_vrImg=uri;const a=document.getElementById('vrAva');if(a){a.style.backgroundImage=`url(${uri})`;a.innerHTML='';}});input.value='';}
 function visitorRegister(){
   const v=getVisitor()||{};
   const done=!!(v&&v.id);
+  if(done){
+    const num=storeWaNumber();
+    const waLink='https://wa.me/'+num+'?text='+encodeURIComponent('مرحباً، أريد تعديل بيانات حسابي:\nالاسم: '+(v.name||'')+'\nالهاتف: +'+(v.cc||'222')+' '+(v.phone||''));
+    modal({title:'حسابي في المتجر',size:'sm',body:`
+      <div style="display:flex;flex-direction:column;align-items:center;margin-bottom:14px">
+        <div style="width:84px;height:84px;border-radius:50%;background:var(--primary-soft) center/cover no-repeat;${v.image?`background-image:url(${v.image})`:''};display:grid;place-items:center;color:var(--primary-d);border:2px solid var(--line)">${v.image?'':svg(I.people,30)}</div>
+        <b style="font-size:16px;margin-top:8px">${esc(v.name||'')}</b>
+        <div style="margin-top:4px;font-size:12.5px">${v.verified?'<span style="color:#16a34a;font-weight:700">✔ حساب موثّق</span>':'<span style="color:#B45309;font-weight:700">⏳ بانتظار التوثيق</span>'}</div>
+        <div class="muted" style="font-size:12.5px;margin-top:4px" dir="ltr">+${esc(v.cc||'222')} ${esc(v.phone||'')}</div>
+      </div>
+      <div style="background:var(--surface-2,#f1f5f9);border-radius:12px;padding:12px;font-size:12.5px;line-height:1.8;color:var(--ink)">
+        لحماية حسابك، لا يمكن تعديل بياناتك من هنا بعد التسجيل. لتعديل اسمك أو رقمك، رجاءً تواصل مع <b>خدمة العملاء</b>.
+      </div>`,
+      actions:[
+        {label:'تواصل مع خدمة العملاء',primary:true,icon:I.wa,fn:()=>{window.open(waLink,'_blank');return false;}},
+        {label:'تسجيل الخروج',fn:()=>{customerLogout();return true;}},
+        {label:t('close'),fn:()=>true}
+      ]});
+    return;
+  }
   _vrImg=v.image||null;
-  const statusLine=done?(v.verified?'<span style="color:#16a34a;font-weight:700">✔ حساب موثّق</span>':'<span style="color:#B45309;font-weight:700">⏳ بانتظار التوثيق من المتجر</span>'):'';
+  const statusLine='';
   modal({title:done?'حسابي في المتجر':'سجّل بياناتك لدى المتجر',size:'sm',body:`
     <div style="display:flex;flex-direction:column;align-items:center;margin-bottom:12px">
       <div id="vrAva" style="width:84px;height:84px;border-radius:50%;background:#1f2a44 center/cover no-repeat;${_vrImg?`background-image:url(${_vrImg})`:''};display:grid;place-items:center;color:#94a3b8;border:2px solid var(--line)">${_vrImg?'':svg(I.people,30)}</div>
@@ -6671,7 +6729,7 @@ function visitorRegister(){
           cloudAddRegistration(reg).catch(()=>{});
           updateMenuIdentity();closeModal();
           if(verified){toast('تم تحديث بياناتك','ok');return;}
-          setTimeout(()=>{try{watchVerification();}catch(e){}},900);
+          setTimeout(()=>{try{watchVerification();}catch(e){}try{watchAccount();}catch(e){}},900);
           setTimeout(awaitingActivationScreen,80);
         };
         // منع تكرار الرقم: كل رقم يُسجَّل مرة واحدة فقط
@@ -6704,7 +6762,7 @@ function openReferral(){
     <div style="text-align:center;padding:6px 2px">
       <div style="font-size:42px">🎁</div>
       <p style="font-weight:700;margin:8px 0;line-height:1.7">ادعُ أصدقاءك واكسب <b style="color:var(--primary-d)">${money(bonus)} ${esc(nm)}</b> عن كل صديق يسجّل ويُوثَّق!</p>
-      ${loyOn()?`<div class="muted" style="font-size:12.5px">رصيدك الآن: <b style="color:var(--primary-d)">${money(loyPoints(v.id))} ${esc(nm)}</b></div>`:''}
+      ${loyOn()?`<div class="muted" style="font-size:12.5px">رصيدك الآن: <b style="color:var(--primary-d)" id="myLoyPts">${money(myPointsNow())}</b> ${esc(nm)}</div>`:''}
       <div style="background:var(--surface-2);border-radius:10px;padding:10px;margin:12px 0;font-size:11.5px;word-break:break-all;direction:ltr">${esc(link)}</div>
       <div class="muted" style="font-size:11.5px">تتحوّل نقاطك إلى خصومات عند الطلب من المتجر.</div>
     </div>`,
@@ -6773,11 +6831,11 @@ function openAccountSheet(){
         <div class="muted" style="font-size:12px;margin-top:2px" dir="ltr">+${esc(v.cc||'222')} ${esc(v.phone||'')}</div>
       </div>`:`<p class="muted" style="font-size:13px;margin-bottom:14px;text-align:center;line-height:1.8">سجّل حسابك أو ادخل بحسابك للاستفادة من المتابعة والعروض.</p>`}
     <div style="display:flex;flex-direction:column;gap:10px">
-      <button class="btn btn-primary" style="justify-content:center" onclick="closeModal();visitorRegister()">${svg(reg?I.edit:I.people,16)} ${reg?'حسابي / تعديل بياناتي':'سجّل بياناتك'}</button>
+      <button class="btn btn-primary" style="justify-content:center" onclick="closeModal();visitorRegister()">${svg(reg?I.people:I.people,16)} ${reg?'حسابي':'سجّل بياناتك'}</button>
       ${reg?`<button class="btn" style="justify-content:center" onclick="closeModal();myAccountStatement()">${svg(I.report,16)} كشف حسابي (الديون والمدفوعات)</button>`:''}
       ${reg&&loyOn()?`<div style="background:linear-gradient(135deg,var(--primary),var(--primary-d));color:#fff;border-radius:14px;padding:14px;text-align:center">
         <div style="font-size:12px;opacity:.9">رصيد ${esc(loyName())}</div>
-        <div style="font-size:30px;font-weight:800;line-height:1.1">${money(loyPoints(v.id))}</div>
+        <div id="myLoyPts" style="font-size:30px;font-weight:800;line-height:1.1">${money(myPointsNow())}</div>
         <div style="font-size:11px;opacity:.9;margin-top:3px">تكسبها مع كل شراء وتستبدلها بخصم (النقطة = ${money(loyRedeemVal())} ${CUR()})</div>
       </div>`:''}
       ${reg
@@ -6788,6 +6846,7 @@ function openAccountSheet(){
       <button class="btn" style="justify-content:center" onclick="closeModal();adminLogin()">${svg(I.lock||I.user||I.people,15)} دخول كمدير / موظّف</button>
     </div>`,
     actions:[{label:t('close'),fn:()=>true}]});
+  if(reg&&loyOn()){try{const pr=cloudGetReg(v.id);if(pr&&pr.then)pr.then(rg=>{if(rg&&rg.points!=null){_myPoints=Number(rg.points)||0;const el=document.getElementById('myLoyPts');if(el)el.textContent=money(_myPoints);}}).catch(()=>{});}catch(e){}}
 }
 function customerLogout(){
   try{localStorage.removeItem('sadaqa_visitor');}catch(e){}
@@ -6796,31 +6855,61 @@ function customerLogout(){
   toast('تم تسجيل الخروج','ok');
   showStore();
 }
+let _otpConfirm=null,_otpRecaptcha=null,_otpPhone=null;
 function customerLogin(){
+  _otpConfirm=null;_otpPhone=null;
   modal({title:'تسجيل الدخول',size:'sm',body:`
-    <p class="muted" style="font-size:13px;margin-bottom:12px">أدخل رقم هاتفك المسجّل لاستعادة حسابك على هذا الجهاز.</p>
+    <p class="muted" style="font-size:13px;margin-bottom:12px">أدخل رقم هاتفك المسجّل، وسيصلك <b>رمز تحقّق برسالة نصّية</b> لتأكيد أنّك صاحب الرقم.</p>
     <div class="field"><label>رقم الهاتف</label>
       <div style="display:flex;gap:8px">
         <select class="inp" id="li_cc" style="max-width:155px">${ccOptions('222')}</select>
         <input class="inp" id="li_phone" inputmode="numeric" placeholder="رقم الهاتف" style="flex:1">
       </div>
     </div>
+    <div id="otpBox" style="display:none;margin-top:12px">
+      <div class="field"><label>رمز التحقّق (وصلك في رسالة)</label><input class="inp" id="li_otp" inputmode="numeric" placeholder="مثال: 123456"></div>
+    </div>
+    <button id="otpBtn" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:14px" onclick="sendLoginOtp()">${svg(I.check,16)} إرسال رمز التحقّق</button>
+    <div id="recaptcha-container"></div>
     <p class="muted" style="font-size:11.5px;margin-top:10px">ليس لديك حساب؟ <a onclick="closeModal();visitorRegister()" style="color:var(--primary);font-weight:700;cursor:pointer">سجّل حساباً جديداً</a></p>`,
-    actions:[
-      {label:'دخول',primary:true,icon:I.check,fn:()=>{
-        const cc=val('li_cc')||'222';const phone=digitsOnly(val('li_phone'));
-        if(phone.length<6){toast('أدخل رقم هاتف صحيح','err');return false;}
-        toast('جارٍ البحث عن حسابك...','ok');
-        const p=cloudGetReg(regKey(cc,phone));
-        if(p&&p.then){p.then(reg=>{
-          if(reg&&reg.name){setVisitor({id:regKey(cc,phone),name:reg.name,cc:reg.cc||cc,phone:reg.phone||phone,verified:!!reg.verified,image:reg.image||''});updateMenuIdentity();closeModal();toast('مرحباً '+reg.name+(reg.verified?' (موثّق ✔)':' (بانتظار التفعيل)'),'ok');showStore();setTimeout(()=>{try{watchVerification();}catch(e){}},600);}
-          else{toast('لا يوجد حساب بهذا الرقم — سجّل حساباً جديداً','err');}
-        }).catch(()=>toast('تعذّر الاتصال — تحقّق من الإنترنت','err'));}
-        else toast('لا اتصال بالسحابة','err');
-        return false;
-      }},
-      {label:'إلغاء',fn:()=>true}
-    ]});
+    actions:[{label:'إلغاء',fn:()=>{try{if(_otpRecaptcha){_otpRecaptcha.clear();_otpRecaptcha=null;}}catch(e){}return true;}}]});
+}
+function sendLoginOtp(){
+  const cc=val('li_cc')||'222';const phone=digitsOnly(val('li_phone'));
+  if(phone.length<6){toast('أدخل رقم هاتف صحيح','err');return;}
+  if(!AUTH||!window.firebase||!firebase.auth||!firebase.auth.RecaptchaVerifier){toast('خدمة التحقّق غير متاحة الآن — تحقّق من الإنترنت','err');return;}
+  _otpPhone={cc,phone};
+  const e164='+'+digitsOnly(cc)+phone.replace(/^0+/,'');
+  try{
+    if(!_otpRecaptcha)_otpRecaptcha=new firebase.auth.RecaptchaVerifier('recaptcha-container',{size:'invisible'});
+    toast('جارٍ إرسال الرمز...','ok');
+    AUTH.signInWithPhoneNumber(e164,_otpRecaptcha).then(cr=>{
+      _otpConfirm=cr;
+      const ob=document.getElementById('otpBox');if(ob)ob.style.display='block';
+      const btn=document.getElementById('otpBtn');if(btn){btn.innerHTML=svg(I.check,16)+' تأكيد وتسجيل الدخول';btn.setAttribute('onclick','confirmLoginOtp()');}
+      toast('أرسلنا رمز التحقّق إلى هاتفك 📩','ok');
+    }).catch(err=>{console.warn('otp',err);
+      const code=(err&&err.code)||'';
+      toast(code.includes('billing')||code.includes('not-enabled')?'التحقّق بالهاتف غير مُفعّل في الإعدادات':'تعذّر إرسال الرمز — حاول لاحقاً','err');
+      try{_otpRecaptcha.clear();}catch(e){}_otpRecaptcha=null;});
+  }catch(e){toast('تعذّر تهيئة التحقّق','err');}
+}
+function confirmLoginOtp(){
+  const code=digitsOnly(val('li_otp'));if(code.length<4){toast('أدخل الرمز المرسَل','err');return;}
+  if(!_otpConfirm){toast('أرسل الرمز أولاً','err');return;}
+  toast('جارٍ التحقّق...','ok');
+  _otpConfirm.confirm(code).then(()=>{
+    const cc=_otpPhone.cc,phone=_otpPhone.phone,id=regKey(cc,phone);
+    try{if(!CUR_USER&&AUTH&&AUTH.signOut)AUTH.signOut();}catch(e){}
+    const proceed=reg=>{
+      if(reg&&reg.name){
+        setVisitor({id,name:reg.name,cc:reg.cc||cc,phone:reg.phone||phone,verified:!!reg.verified,image:reg.image||''});
+        updateMenuIdentity();closeModal();toast('مرحباً '+reg.name+(reg.verified?' (موثّق ✔)':' (بانتظار التفعيل)'),'ok');showStore();
+        setTimeout(()=>{try{watchVerification();}catch(e){}try{watchAccount();}catch(e){}},600);
+      }else{closeModal();toast('رقمك مؤكّد — أكمل إنشاء حسابك','ok');setTimeout(visitorRegister,200);}
+    };
+    const p=cloudGetReg(id);if(p&&p.then)p.then(proceed).catch(()=>proceed(null));else proceed(null);
+  }).catch(()=>toast('الرمز غير صحيح','err'));
 }
 function awaitingActivationScreen(){
   const num=storeWaNumber();
