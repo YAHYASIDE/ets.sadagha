@@ -729,9 +729,13 @@ html.dark .pd-thumb{background-color:#1B2742}
 <div class="menu-drop" id="storeMenu">
   <div class="scrim" onclick="closeStoreMenu()"></div>
   <div class="menu-card">
-    <div class="menu-head" onclick="closeStoreMenu();openMyAccountFull()" style="cursor:pointer">
-      <div class="menu-ava" id="menuAva"></div>
-      <div class="menu-name">زائر</div>
+    <div class="menu-head" style="cursor:pointer">
+      <div class="menu-ava" id="menuAva" onclick="closeStoreMenu();openMyAccountFull()"></div>
+      <div style="flex:1;min-width:0" onclick="closeStoreMenu();openMyAccountFull()">
+        <div class="menu-name">زائر</div>
+        <div id="menuBal" style="font-size:12px;font-weight:700;margin-top:2px;opacity:.95;display:none"></div>
+      </div>
+      <button id="menuBalEye" onclick="event.stopPropagation();toggleMenuBal()" title="إظهار/إخفاء الرصيد" style="display:none;background:rgba(255,255,255,.18);border:0;color:#fff;width:34px;height:34px;border-radius:50%;cursor:pointer;font-size:16px;flex:0 0 auto">👁</button>
     </div>
     <div class="menu-list">
       <div id="menuAuth"></div>
@@ -1326,7 +1330,7 @@ function normAr(s){return String(s==null?'':s).toLowerCase()
 function todayISO(){return new Date().toISOString().slice(0,10);}
 const AR_MONTHS=['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
 const FR_MONTHS=['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
-function fmtDate(iso){if(!iso)return'';const d=new Date(iso);const mo=(typeof LANG!=='undefined'&&LANG==='fr')?FR_MONTHS:AR_MONTHS;return d.getDate()+' '+mo[d.getMonth()]+' '+d.getFullYear();}
+function fmtDate(iso){if(!iso)return'';const d=new Date(iso);if(isNaN(d))return'';return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate();}
 function fmtDateTime(iso){if(!iso)return'';const d=new Date(iso);const p=n=>String(n).padStart(2,'0');return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate()+'  '+d.getHours()+':'+p(d.getMinutes());}
 function startOf(period){
   const d=new Date();d.setHours(0,0,0,0);
@@ -3769,10 +3773,10 @@ function collectPayment(id){
     }},{label:'إلغاء',fn:()=>true}]});
 }
 /* ===== تسديد/دفع من الزبون مع تأكيد المتجر ===== */
-let _cpProof=null,_cpApp='';
+let _cpProof=null,_cpApp='',_cpProofs=[];
 function payDebtSheet(prefill){
   const v=getVisitor();if(!v||!v.id){toast('سجّل حسابك أولاً','err');visitorRegister();return;}
-  _cpProof=null;_cpApp='';
+  _cpProof=null;_cpApp='';_cpProofs=[];
   const apps=(typeof payApps==='function')?payApps():[];
   modal({title:'تسديد / دفع',size:'sm',body:`
     <p class="muted" style="font-size:12.5px;margin-bottom:10px">ادفع المبلغ المستحق عليك (أو أضِف رصيداً لحسابك) عبر أحد تطبيقات الدفع، ثم أرسِل صورة إثبات الدفع ليؤكّدها المتجر ويُحدّث رصيدك.</p>
@@ -3781,9 +3785,9 @@ function payDebtSheet(prefill){
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
         ${apps.map(a=>`<button type="button" class="btn" id="cpapp_${a.id}" style="justify-content:center;font-size:12px;padding:9px 4px" onclick="cpSelApp('${a.id}')">${esc(a.name)}</button>`).join('')}
       </div><div id="cp_paynum" class="muted" style="font-size:12px;margin-top:8px"></div></div>`:`<div class="muted" style="font-size:12px;margin-top:8px">رقم الدفع: <b dir="ltr">${esc(DB.settings.payNumber||DB.settings.whatsapp||'')}</b></div>`}
-    <div class="field" style="margin-top:10px"><label>صورة إثبات الدفع</label>
-      <input type="file" id="cp_file" accept="image/*" onchange="cpPickProof(this)">
-      <div id="cp_proofPrev" style="margin-top:6px"></div></div>
+    <div class="field" style="margin-top:10px"><label>صور إثبات الدفع (يمكن إضافة عدّة صور)</label>
+      <input type="file" id="cp_file" accept="image/*" multiple onchange="cpPickProof(this)">
+      <div id="cp_proofPrev" style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px"></div></div>
     <div class="field" style="margin-top:10px"><label>ملاحظة (اختياري)</label><input class="inp" id="cp_note" placeholder="مثال: تسديد فاتورة"></div>`,
     actions:[{label:'إرسال الدفعة',primary:true,icon:I.check,fn:()=>submitCustPayment()},{label:'إلغاء',fn:()=>true}]});
 }
@@ -3816,15 +3820,20 @@ function submitCustWithdraw(){
   try{showInAppNotif('✅ تم إرسال طلب السحب','سيراجع المتجر طلبك ويصرف لك المبلغ.');}catch(e){}
   toast('أُرسل طلب السحب — بانتظار موافقة المتجر','ok');return false;
 }
-function cpPickProof(inp){const f=inp.files&&inp.files[0];if(!f)return;downscaleImage(f,d=>{_cpProof=d;const pv=document.getElementById('cp_proofPrev');if(pv)pv.innerHTML='<img src="'+d+'" style="max-width:100%;border-radius:8px">';});}
+function cpPickProof(inp){const fs=inp.files?Array.from(inp.files):[];if(!fs.length)return;
+  let done=0;fs.forEach(f=>{if(_cpProofs.length>=6){done++;return;}downscaleImage(f,d=>{if(_cpProofs.length<6)_cpProofs.push(d);done++;if(done>=fs.length)renderCpProofs();});});
+  try{inp.value='';}catch(e){}}
+function renderCpProofs(){const pv=document.getElementById('cp_proofPrev');if(!pv)return;
+  pv.innerHTML=_cpProofs.map((d,i)=>`<div style="position:relative"><img src="${d}" style="width:70px;height:70px;object-fit:cover;border-radius:8px;border:1px solid var(--line)"><button type="button" onclick="cpRemoveProof(${i})" style="position:absolute;top:-6px;inset-inline-end:-6px;background:#dc2626;color:#fff;border:0;width:20px;height:20px;border-radius:50%;font-size:12px;cursor:pointer;line-height:1">×</button></div>`).join('')+(_cpProofs.length<6?`<button type="button" onclick="document.getElementById('cp_file').click()" style="width:70px;height:70px;border:1px dashed var(--line);border-radius:8px;background:transparent;cursor:pointer;font-size:22px;color:var(--muted)">+</button>`:'');}
+function cpRemoveProof(i){_cpProofs.splice(i,1);renderCpProofs();}
 function submitCustPayment(){
   if(window._acctBlocked){toast('حسابك محظور — تواصل مع المتجر.','err');return false;}
   const v=getVisitor()||{};const amt=parseFloat(val('cp_amt'))||0;
   if(amt<=0){toast('أدخل مبلغاً صحيحاً','err');return false;}
-  if(!_cpProof){toast('أرفق صورة إثبات الدفع','err');return false;}
+  if(!_cpProofs.length){toast('أرفق صورة إثبات الدفع','err');return false;}
   const appBox=boxes().find(b=>b.id===_cpApp);
   const p={id:uid('cpr'),customerId:v.id,name:v.name||'',cc:v.cc||'222',phone:v.phone||'',amount:amt,
-    app:appBox?appBox.name:'',box:_cpApp||'',proof:_cpProof||'',note:(val('cp_note')||'').trim(),date:new Date().toISOString(),status:'pending'};
+    app:appBox?appBox.name:'',box:_cpApp||'',proof:_cpProofs[0]||'',proofs:_cpProofs.slice(),note:(val('cp_note')||'').trim(),date:new Date().toISOString(),status:'pending'};
   cloudAddCustPayment(p).then(()=>{}).catch(()=>{});
   closeModal();
   try{showInAppNotif('✅ تم إرسال دفعتك','سيؤكّد المتجر استلام المبلغ ثم يُحدّث رصيدك.');}catch(e){}
@@ -3840,7 +3849,7 @@ function openCustPayReviews(){
       <div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b>${isWd?'🔻 طلب سحب · ':''}${esc(p.name||'زبون')}</b><b style="color:${isWd?'#B91C1C':'var(--primary-d)'};font-size:15px">${m(p.amount)}</b></div>
       <div class="muted" style="font-size:12px" dir="ltr">+${esc(p.cc||'222')} ${esc(p.phone||'')}</div>
       <div class="muted" style="font-size:12px">${isWd?'استلام عبر':'عبر'}: ${esc(p.app||(isWd?'غير محدّد':'تطبيق دفع'))}${p.note?(' · '+esc(p.note)):''}<br>${fmtDateTime(p.date)}</div>
-      ${isWd?'':(p.proof?`<img src="${p.proof}" style="max-width:100%;border-radius:8px;margin-top:6px;cursor:zoom-in" onclick="window.open('${p.proof}','_blank')">`:'<div class="muted" style="font-size:12px;margin-top:4px">⚠️ لا صورة إثبات</div>')}
+      ${isWd?'':((p.proofs&&p.proofs.length)?`<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">${p.proofs.map(im=>`<img src="${im}" style="width:84px;height:84px;object-fit:cover;border-radius:8px;cursor:zoom-in" onclick="window.open('${im}','_blank')">`).join('')}</div>`:(p.proof?`<img src="${p.proof}" style="max-width:100%;border-radius:8px;margin-top:6px;cursor:zoom-in" onclick="window.open('${p.proof}','_blank')">`:'<div class="muted" style="font-size:12px;margin-top:4px">⚠️ لا صورة إثبات</div>'))}
       ${st==='pending'?`<div style="background:${isWd?'#FEE2E2':'#FEF9C3'};border-radius:8px;padding:7px;margin-top:7px;font-size:12px;text-align:center">${isWd?'أكِّد فقط بعد صرف المبلغ فعلاً للزبون.':'هل وصلك المبلغ فعلاً؟ أكِّد فقط بعد التحقّق.'}</div>
         <div style="display:flex;gap:6px;margin-top:7px">
         <button class="btn btn-sm" style="flex:1;justify-content:center;background:#16a34a;color:#fff;border:0" onclick="confirmCustPayment('${p.id}')">${isWd?'✔ تم الصرف':'✔ نعم وصلني'}</button>
@@ -3918,7 +3927,7 @@ function vchPartyName(v){
   if(v.partyType==='supplier'){const s=DB.suppliers.find(x=>x.id===v.partyId);return s?s.name:(v.partyName||'مورد');}
   return v.partyName||'حساب آخر';
 }
-const APP_BUILD='يومية-جديدة · 20/06 #84';
+const APP_BUILD='يومية-جديدة · 20/06 #90';
 let jrnDay=null,jrnBox='',jrnQ='';
 function journalEntries(day,boxId){
   const E=[];const sameDay=d=>(d||'').slice(0,10)===day;
@@ -5018,7 +5027,7 @@ function renderOrders(list){
       </div>
       <div style="font-size:12.5px;margin-top:8px">${o.items.map(l=>`${esc(l.name)} ×${l.qty}`).join(' · ')}</div>
       <div class="muted" style="font-size:12px;margin-top:5px">الحمل: ${money(o.delivery)} · الدفع: ${payTxt}${o.addr?(' · '+esc(o.addr)):''}</div>
-      ${o.proof?`<img src="${o.proof}" onclick="imgLightbox('${o.proof}')" style="margin-top:8px;max-height:90px;border-radius:8px;cursor:zoom-in">`:''}
+      ${(o.proofs&&o.proofs.length)?`<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">${o.proofs.map(im=>`<img src="${im}" onclick="imgLightbox('${im}')" style="height:90px;border-radius:8px;cursor:zoom-in">`).join('')}</div>`:(o.proof?`<img src="${o.proof}" onclick="imgLightbox('${o.proof}')" style="margin-top:8px;max-height:90px;border-radius:8px;cursor:zoom-in">`:'')}
       ${o.voice?`<div style="margin-top:8px"><div class="muted" style="font-size:11px;margin-bottom:3px">🎙 رسالة العميل الصوتية (العنوان):</div><audio controls src="${o.voice}" style="width:100%;max-width:320px;height:34px"></audio></div>`:''}
       ${o.coords?`<a class="btn btn-sm" href="https://maps.google.com/?q=${o.coords.lat},${o.coords.lng}" target="_blank" style="margin-top:8px">📍 موقع العميل على الخريطة</a>`:''}
       ${o.note?`<div class="muted" style="font-size:12px;margin-top:5px">ملاحظة: ${esc(o.note)}</div>`:''}
@@ -5059,8 +5068,8 @@ function custStatementEntries(cust){
   const invoices=(DB.sales||[]).filter(s=>s.customerId===cust.id);
   const pays=(DB.custPays||[]).filter(pp=>pp.custId===cust.id);
   const entries=[];
-  invoices.forEach(s=>{const ret=s.type==='return';entries.push({date:s.date,label:'فاتورة #'+s.no+(ret?' (مرتجع)':s.type==='credit'?' (آجل)':' (نقدي)'),debit:ret?0:(Number(s.total)||0),credit:(Number(s.paid)||0)+(ret?(Number(s.total)||0):0)});});
-  pays.forEach(pp=>{const a=Number(pp.amount)||0;entries.push({date:pp.date,label:(a>=0?'دفعة مسدّدة':'صرف/إرجاع')+(pp.note?(' — '+pp.note):''),debit:a<0?-a:0,credit:a>0?a:0});});
+  invoices.forEach(s=>{const ret=s.type==='return';entries.push({date:s.date,label:'فاتورة #'+s.no+(ret?' (مرتجع)':s.type==='credit'?' (آجل)':' (نقدي)'),debit:ret?0:(Number(s.total)||0),credit:(Number(s.paid)||0)+(ret?(Number(s.total)||0):0),ref:'inv',no:s.no,itype:s.type,items:(s.items||[]).slice(0,40).map(it=>({n:it.name,q:it.qty,p:it.price,t:it.total})),total:Number(s.total)||0,paid:Number(s.paid)||0});});
+  pays.forEach(pp=>{const a=Number(pp.amount)||0;entries.push({date:pp.date,label:(a>=0?'دفعة مسدّدة':'صرف/إرجاع')+(pp.note?(' — '+pp.note):''),debit:a<0?-a:0,credit:a>0?a:0,ref:'pay'});});
   entries.sort((a,b)=>new Date(a.date)-new Date(b.date));
   return entries;
 }
@@ -5070,8 +5079,8 @@ function syncCustToReg(cust){
   const ids=DB.customers.filter(c=>digitsOnly(c.phone||'')===ph&&(c.cc||'222')===cc).map(c=>c.id);
   const bal=DB.customers.filter(c=>ids.includes(c.id)).reduce((a,c)=>a+(Number(c.balance)||0),0);
   const entries=[];
-  (DB.sales||[]).filter(s=>ids.includes(s.customerId)).forEach(s=>{const ret=s.type==='return';entries.push({date:s.date,label:'فاتورة #'+s.no+(ret?' (مرتجع)':s.type==='credit'?' (آجل)':' (نقدي)'),debit:ret?0:(Number(s.total)||0),credit:(Number(s.paid)||0)+(ret?(Number(s.total)||0):0)});});
-  (DB.custPays||[]).filter(pp=>ids.includes(pp.custId)).forEach(pp=>{const a=Number(pp.amount)||0;entries.push({date:pp.date,label:(a>=0?'دفعة مسدّدة':'صرف/إرجاع')+(pp.note?(' — '+pp.note):''),debit:a<0?-a:0,credit:a>0?a:0});});
+  (DB.sales||[]).filter(s=>ids.includes(s.customerId)).forEach(s=>{const ret=s.type==='return';entries.push({date:s.date,label:'فاتورة #'+s.no+(ret?' (مرتجع)':s.type==='credit'?' (آجل)':' (نقدي)'),debit:ret?0:(Number(s.total)||0),credit:(Number(s.paid)||0)+(ret?(Number(s.total)||0):0),ref:'inv',no:s.no,itype:s.type,items:(s.items||[]).slice(0,40).map(it=>({n:it.name,q:it.qty,p:it.price,t:it.total})),total:Number(s.total)||0,paid:Number(s.paid)||0});});
+  (DB.custPays||[]).filter(pp=>ids.includes(pp.custId)).forEach(pp=>{const a=Number(pp.amount)||0;entries.push({date:pp.date,label:(a>=0?'دفعة مسدّدة':'صرف/إرجاع')+(pp.note?(' — '+pp.note):''),debit:a<0?-a:0,credit:a>0?a:0,ref:'pay'});});
   entries.sort((a,b)=>new Date(a.date)-new Date(b.date));
   try{cloudSetReg(key,{balance:bal,statement:entries.slice(-40),stmtAt:Date.now()});}catch(e){}
 }
@@ -5118,7 +5127,7 @@ function convertOrder(id){
     DB.sales.push(sale);
     if(cust&&remaining>0)cust.balance=(Number(cust.balance)||0)+remaining;
     if(paid>0)addCash('in',paid,'دفعة طلب #'+o.no,sale.id,boxId);
-    o.status='delivering';o.saleId=sale.id;cloudSetOrder(o.id,{status:'delivering',saleId:sale.id}).catch(()=>{});
+    o.status='delivering';o.saleId=sale.id;o.saleNo=no;cloudSetOrder(o.id,{status:'delivering',saleId:sale.id,saleNo:no}).catch(()=>{});
     // نقاط الولاء: اخصم المستبدلة وامنح المكتسبة على المبلغ المدفوع فعلاً (بعد خصم النقاط)
     if(o.customerId){
       if(Number(o.pointsUsed)>0)loyAdd(o.customerId,-Number(o.pointsUsed),'استبدال في طلب #'+o.no);
@@ -6469,7 +6478,7 @@ function cartStoreQty(i,d){const l=CART[i];l.qty+=d;if(l.qty<=0)CART.splice(i,1)
 function cartSetQty(i,v){const l=CART[i];if(!l)return;let n=parseInt(String(v).replace(/[^0-9]/g,''),10);if(!n||n<1){CART.splice(i,1);}else l.qty=n;saveCart();renderStoreCart();updateCartBadge();renderStoreGrid();renderDeals();}
 
 /* ---- إتمام الطلب (نموذج البيع) ---- */
-let _coords=null,_payProof=null,_payMode='cod',_payApp='',_payPts=0;
+let _coords=null,_payProof=null,_payMode='cod',_payApp='',_payPts=0,_balRemainMode='cod';
 function checkoutWhatsApp(){
   if(!CART.length)return;
   const num=(DB.settings.whatsapp||'').replace(/[^0-9]/g,'');
@@ -6477,7 +6486,7 @@ function checkoutWhatsApp(){
   openCheckout(num);
 }
 function openCheckout(num){
-  _coords=null;_payProof=null;_voiceNote=null;closeCart();
+  _coords=null;_payProof=null;window._payProofs=[];_balRemainMode='cod';_voiceNote=null;closeCart();
   const v=getVisitor()||{};
   const total=CART.reduce((a,l)=>a+l.price*l.qty,0);
   modal({title:t('checkoutTitle'),size:'lg',body:`
@@ -6526,12 +6535,17 @@ function getCheckoutLocation(){
   },{enableHighAccuracy:false,timeout:5000,maximumAge:600000});
 }
 function pickPayProof(input){
-  const f=input.files[0];if(!f)return;
-  downscaleImage(f,uri=>{if(!uri){toast('تعذّر قراءة الصورة','err');return;}
-    _payProof=uri;const pv=document.getElementById('co_proofPrev');
-    if(pv){pv.style.backgroundImage=`url(${uri})`;pv.innerHTML='';}});
+  const fs=input.files?Array.from(input.files):[];if(!fs.length)return;
+  window._payProofs=window._payProofs||[];
+  let done=0;fs.forEach(f=>{if(window._payProofs.length>=6){done++;return;}downscaleImage(f,uri=>{if(uri&&window._payProofs.length<6)window._payProofs.push(uri);done++;if(done>=fs.length){_payProof=window._payProofs[0]||null;renderPayProofs();}});});
   input.value='';
 }
+function renderPayProofs(){const pv=document.getElementById('co_proofPrev');if(!pv)return;const arr=window._payProofs||[];
+  pv.style.background='var(--surface-2,#f1f5f9)';pv.style.backgroundImage='';pv.style.height='auto';pv.style.minHeight='90px';pv.style.padding='8px';pv.style.placeItems='start';
+  pv.onclick=null;
+  pv.innerHTML=`<div style="display:flex;flex-wrap:wrap;gap:6px;width:100%">${arr.map((d,i)=>`<div style="position:relative"><img src="${d}" style="width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid var(--line)"><button type="button" onclick="event.stopPropagation();payRemoveProof(${i})" style="position:absolute;top:-6px;inset-inline-end:-6px;background:#dc2626;color:#fff;border:0;width:20px;height:20px;border-radius:50%;font-size:12px;cursor:pointer;line-height:1">×</button></div>`).join('')}${arr.length<6?`<button type="button" onclick="event.stopPropagation();document.getElementById('co_proof').click()" style="width:64px;height:64px;border:1px dashed var(--line);border-radius:8px;background:transparent;cursor:pointer;font-size:22px;color:var(--muted)">+</button>`:''}</div>`;
+}
+function payRemoveProof(i){(window._payProofs||[]).splice(i,1);_payProof=(window._payProofs||[])[0]||null;renderPayProofs();}
 function submitCheckout(num,total){
   const name=(val('co_name')||'').trim();const cc=val('co_cc')||'222';const phone=(val('co_phone')||'').trim();
   if(!name||!phone){toast(t('coNeed'),'err');const ci=document.getElementById('coInfo');if(ci)ci.classList.remove('hidden');return false;}
@@ -6549,7 +6563,7 @@ function fallbackCopy(txt,cb){const ta=document.createElement('textarea');ta.val
 function payApps(){return boxes().filter(b=>b.type==='app'||b.type==='bank');}
 function deliveryFee(){return Number(DB.settings.delivery)||0;}
 function openPaymentStep(ctx){
-  _payProof=null;_payMode='full';_payPts=0;
+  _payProof=null;window._payProofs=[];_payMode='full';_payPts=0;_balRemainMode='cod';
   _payApp=(payApps().find(b=>/bankily|بنكيلي/i.test(b.name))||payApps()[0]||{}).id||'';
   ctx.delivery=deliveryFee();
   ctx.itemsTotal=CART.reduce((a,l)=>a+l.price*l.qty,0);
@@ -6593,36 +6607,52 @@ function renderPaymentStep(ctx){
   const tabBtn=(mm,lbl)=>`<button class="btn ${_payMode===mm?'btn-primary':''}" style="flex:1;justify-content:center;font-size:12px;padding:9px 4px" onclick="setPayMode('${mm}')">${lbl}</button>`;
   const tabs=`<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">${creditAvail>0?tabBtn('balance','💳 من رصيدي'):''}${tabBtn('cod','عند الاستلام')}${tabBtn('full','دفع كامل')}${tabBtn('partial','جزء + الباقي')}</div>`;
   let pane='';
+  const appGrid=`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">
+      ${apps.map(b=>`<button class="btn ${_payApp===b.id?'btn-primary':''}" style="justify-content:center;font-size:12px;padding:10px 4px" onclick="setPayApp('${b.id}')">${esc(b.name)}</button>`).join('')}</div>`;
+  const appNum=appBox?`<div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:14px;padding:14px;margin-bottom:12px;text-align:center">
+        <div style="font-size:12.5px;color:#1E3A8A;font-weight:700;margin-bottom:6px">حوّل عبر <b>${esc(appBox.name)}</b> إلى الرقم:</div>
+        <div style="font-size:25px;font-weight:800;letter-spacing:1px;direction:ltr;color:#0f172a">${esc(appBox.payNum||DB.settings.payNumber||'')}</div>
+        <button class="btn btn-sm btn-primary" style="margin-top:10px" onclick="copyText('${esc(appBox.payNum||DB.settings.payNumber||'')}')">📋 نسخ الرقم</button></div>`
+      :`<p class="muted" style="font-size:12.5px;text-align:center;margin-bottom:12px">اختر تطبيق الدفع لعرض الرقم</p>`;
+  const proofUI=`<div class="field"><label>إثبات الدفع — صور التحويل (يمكن إضافة عدّة صور)</label>
+      <div id="co_proofPrev" onclick="document.getElementById('co_proof').click()" style="height:90px;border:1px dashed var(--line);border-radius:12px;display:grid;place-items:center;color:var(--ink);font-size:12.5px;cursor:pointer;background:var(--surface-2,#f1f5f9)">${svg(I.upload,18)+' <span style=\"margin-inline-start:6px\">إرفاق صور الإثبات</span>'}</div>
+      <input type="file" id="co_proof" accept="image/*" multiple class="hidden" onchange="pickPayProof(this)"></div>`;
+  let balAppShown=false;
   if(_payMode==='balance'){
+    let rem='';
+    if(balRemain>0){
+      const appBlk=_balRemainMode==='app'?(`<div style="margin-top:10px">${appGrid}${appNum}${proofUI}</div>`):'';
+      if(_balRemainMode==='app')balAppShown=true;
+      rem=`<div style="display:flex;justify-content:space-between;margin-top:6px;font-size:13px"><span>المتبقّي بعد الرصيد</span><b>${money(balRemain)} ${CUR()}</b></div>
+        <div style="font-size:12px;margin-top:10px;font-weight:800">طريقة دفع المتبقّي:</div>
+        <div style="display:flex;gap:6px;margin-top:6px">
+          <button class="btn btn-sm ${_balRemainMode==='cod'?'btn-primary':''}" style="flex:1;justify-content:center" onclick="setBalRemainMode('cod')">عند الاستلام</button>
+          <button class="btn btn-sm ${_balRemainMode==='app'?'btn-primary':''}" style="flex:1;justify-content:center" onclick="setBalRemainMode('app')">عبر تطبيق الآن</button>
+        </div>${appBlk}`;
+    }else{
+      rem=`<div style="font-size:12.5px;color:#15803D;font-weight:700;margin-top:8px">✓ الطلب مغطّى بالكامل من رصيدك — لا حاجة لدفع شيء.</div>`;
+    }
     pane=`<div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:14px;padding:14px;color:#1E3A8A">
       <div style="font-weight:800;font-size:14px">💳 الدفع من رصيدك</div>
       <div style="font-size:12.5px;margin-top:6px">رصيدك المتاح: <b>${money(creditAvail)} ${CUR()}</b></div>
       <div style="display:flex;justify-content:space-between;margin-top:10px;font-size:13px"><span>يُخصم من رصيدك</span><b style="color:#15803D">${money(balUse)} ${CUR()}</b></div>
-      ${balRemain>0?`<div style="display:flex;justify-content:space-between;margin-top:4px;font-size:13px"><span>يُدفع نقداً عند الاستلام</span><b>${money(balRemain)} ${CUR()}</b></div><div class="muted" style="font-size:11.5px;margin-top:8px">رصيدك لا يكفي كامل الطلب — الباقي يُدفع عند الاستلام.</div>`:`<div style="font-size:12.5px;color:#15803D;font-weight:700;margin-top:8px">✓ الطلب مغطّى بالكامل من رصيدك — لا حاجة لدفع شيء.</div>`}
+      ${rem}
     </div>`;
   }else if(_payMode==='cod'){
     pane=`<div style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:14px;padding:14px;text-align:center;color:#14532D">
       <div style="font-size:28px">💵</div><div style="font-weight:800;margin-top:4px">الدفع نقداً عند الاستلام</div>
       <div style="font-size:12.5px;margin-top:5px">ستدفع ${money(effTotal)} ${CUR()} عند استلام طلبك.</div></div>`;
   }else{
-    const grid=`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">
-      ${apps.map(b=>`<button class="btn ${_payApp===b.id?'btn-primary':''}" style="justify-content:center;font-size:12px;padding:10px 4px" onclick="setPayApp('${b.id}')">${esc(b.name)}</button>`).join('')}</div>`;
-    const numBox=appBox?`<div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:14px;padding:14px;margin-bottom:12px;text-align:center">
-        <div style="font-size:12.5px;color:#1E3A8A;font-weight:700;margin-bottom:6px">حوّل عبر <b>${esc(appBox.name)}</b> إلى الرقم:</div>
-        <div style="font-size:25px;font-weight:800;letter-spacing:1px;direction:ltr;color:#0f172a">${esc(appBox.payNum||DB.settings.payNumber||'')}</div>
-        <button class="btn btn-sm btn-primary" style="margin-top:10px" onclick="copyText('${esc(appBox.payNum||DB.settings.payNumber||'')}')">📋 نسخ الرقم</button></div>`
-      :`<p class="muted" style="font-size:12.5px;text-align:center;margin-bottom:12px">اختر تطبيق الدفع لعرض الرقم</p>`;
     const depo=_payMode==='partial'
       ?`<div class="field" style="margin-bottom:12px"><label>المبلغ المدفوع مقدّماً عبر التطبيق</label><input class="inp" id="co_deposit" type="number" step="any" placeholder="مثال: ${Math.round(effTotal/2)}"><div class="muted" style="font-size:11.5px;margin-top:4px">الباقي يُدفع نقداً عند الاستلام.</div></div>`
       :`<div style="font-size:12.5px;color:#475569;margin-bottom:12px">المبلغ المطلوب تحويله كاملاً: <b>${money(effTotal)} ${CUR()}</b></div>`;
-    const proof=`<div class="field"><label>إثبات الدفع (صورة التحويل)</label>
-      <div id="co_proofPrev" onclick="document.getElementById('co_proof').click()" style="height:90px;border:1px dashed var(--line);border-radius:12px;display:grid;place-items:center;color:var(--ink);font-size:12.5px;cursor:pointer;background:${_payProof?`url(${_payProof}) center/cover`:'var(--surface-2,#f1f5f9)'} no-repeat">${_payProof?'':svg(I.upload,18)+' <span style=\"margin-inline-start:6px\">إرفاق صورة الإثبات</span>'}</div>
-      <input type="file" id="co_proof" accept="image/*" class="hidden" onchange="pickPayProof(this)"></div>`;
-    pane=grid+numBox+depo+proof;
+    pane=appGrid+appNum+depo+proofUI;
   }
   modal({title:'الدفع وإرسال الطلب',size:'lg',body:summary+tabs+pane,
     actions:[{label:'إكمال الطلب',primary:true,icon:I.check,fn:()=>submitOrder(ctx)},{label:t('close'),fn:()=>true}]});
+  if(_payMode==='full'||_payMode==='partial'||balAppShown){setTimeout(()=>{try{renderPayProofs();}catch(e){}},20);}
 }
+function setBalRemainMode(m){_balRemainMode=m;if(m==='cod')_payApp='';renderPaymentStep(window._coCtx);}
 function submitOrder(ctx){
   if(window._acctBlocked){toast('حسابك محظور بسبب معلومات غير صحيحة متكرّرة — لا يمكنك إرسال طلبات. تواصل مع المتجر.','err');return false;}
   const ptsUsed=Math.max(0,Math.min(_payPts|0,loyUsable(ctx)));const ptsDisc=ptsUsed*loyRedeemVal();
@@ -6632,10 +6662,18 @@ function submitOrder(ctx){
     const creditAvail=Math.max(0,-(Number(window._myBalance)||0));
     fromBalance=Math.min(creditAvail,effTotal);
     if(fromBalance<=0){toast('لا يوجد رصيد متاح للدفع','err');return false;}
+    const balRemain=Math.max(0,effTotal-fromBalance);
+    if(balRemain>0&&_balRemainMode==='app'){
+      appBox=payApps().find(b=>b.id===_payApp);
+      if(!appBox){toast('اختر تطبيق دفع المتبقّي','err');return false;}
+      if(!(window._payProofs&&window._payProofs.length)){toast('أرفق صورة إثبات دفع المتبقّي','err');return false;}
+      payNum=appBox.payNum||DB.settings.payNumber||'';
+      deposit=balRemain;
+    }
   }else if(payMode!=='cod'){
     appBox=payApps().find(b=>b.id===_payApp);
     if(!appBox){toast('اختر تطبيق الدفع','err');return false;}
-    if(!_payProof){toast('يجب إرفاق صورة إثبات الدفع قبل إكمال الطلب','err');return false;}
+    if(!(window._payProofs&&window._payProofs.length)){toast('يجب إرفاق صورة إثبات الدفع قبل إكمال الطلب','err');return false;}
     payNum=appBox.payNum||DB.settings.payNumber||'';
     if(payMode==='full')deposit=effTotal;
     else{deposit=parseFloat(val('co_deposit'))||0;if(deposit<=0){toast('أدخل المبلغ المدفوع مقدّماً','err');return false;}if(deposit>=effTotal){payMode='full';deposit=effTotal;}}
@@ -6647,8 +6685,8 @@ function submitOrder(ctx){
     customerId:v.id||regKey(ctx.cc,ctx.phone),name:ctx.name,cc:ctx.cc,phone:ctx.phone,addr:ctx.addr||'',coords:ctx.coords||null,note:ctx.note||'',
     items:CART.map(l=>({id:l.id,name:l.name,price:l.price,qty:l.qty})),
     itemsTotal:ctx.itemsTotal,delivery:ctx.delivery,pointsUsed:ptsUsed,pointsDiscount:ptsDisc,total:effTotal,fromBalance,
-    payMode,payApp:appBox?appBox.name:'',payAppId:appBox?appBox.id:'',payNum,deposit,remaining:payMode==='balance'?(effTotal-fromBalance):(effTotal-deposit),
-    proof:_payProof||'',voice:ctx.voice||_voiceNote||'',status:'pending'};
+    payMode,payApp:appBox?appBox.name:'',payAppId:appBox?appBox.id:'',payNum,deposit,remaining:payMode==='balance'?(effTotal-fromBalance-deposit):(effTotal-deposit),
+    proof:(window._payProofs&&window._payProofs[0])||_payProof||'',proofs:(window._payProofs||[]).slice(),voice:ctx.voice||_voiceNote||'',status:'pending'};
   DB.orders=DB.orders||[];DB.orders.push(o);save();
   cloudAddOrder(o).catch(()=>{});
   setTimeout(()=>{try{watchMyOrders();}catch(e){}},400);
@@ -6773,6 +6811,7 @@ function openStoreMenu(){
     el.innerHTML=(reg?'':acc)+stmt+auth;
   }
   const adm=document.getElementById('menuAdminBtn');if(adm){const v2=getVisitor();adm.style.display=(v2&&(v2.id||v2.phone))?'none':'';}
+  try{const vb=getVisitor();if(vb&&vb.id){const pr=cloudGetReg(vb.id);if(pr&&pr.then)pr.then(rg=>{if(rg&&rg.balance!=null){window._myBalance=Number(rg.balance)||0;renderMenuBal();}}).catch(()=>{});}}catch(e){}
   document.body.classList.add('menu-open');
   document.getElementById('storeMenu').classList.add('open');
 }
@@ -6947,6 +6986,25 @@ function updateMenuIdentity(){
     mn.innerHTML=esc(menuIdentName())+badge;
   }
   const a=document.getElementById('menuAva');if(a)a.style.backgroundImage=`url(${(v&&v.image)||LOGO})`;
+  renderMenuBal();
+}
+function renderMenuBal(){
+  const v=getVisitor();const bEl=document.getElementById('menuBal');const eye=document.getElementById('menuBalEye');
+  if(!bEl||!eye)return;
+  const reg=!!(v&&(v.id||v.phone));
+  if(!reg){bEl.style.display='none';eye.style.display='none';return;}
+  bEl.style.display='block';eye.style.display='grid';eye.style.placeItems='center';
+  const bal=Number(window._myBalance)||0;
+  const show=localStorage.getItem('sadaqa_hide_bal')!=='1';
+  eye.textContent=show?'👁':'🙈';
+  if(!show){bEl.innerHTML='الرصيد: <b>••••</b>';return;}
+  const txt=bal>0?('عليك: <b>'+m(bal)+'</b>'):bal<0?('لك (رصيد): <b>'+m(-bal)+'</b>'):'رصيدك: <b>0</b>';
+  bEl.innerHTML=txt;
+}
+function toggleMenuBal(){
+  const hidden=localStorage.getItem('sadaqa_hide_bal')==='1';
+  localStorage.setItem('sadaqa_hide_bal',hidden?'0':'1');
+  renderMenuBal();
 }
 function cloudGetReg(id){if(!FS)return Promise.resolve(null);return FS.collection('registrations').doc(String(id)).get().then(d=>d&&d.exists?d.data():null).catch(()=>null);}
 function notifyVerified(name){
@@ -7137,21 +7195,43 @@ function myAccountStatement(){
       renderMyStmt(vv,Array.isArray(reg.statement)?reg.statement:entries,reg.balance!=null?Number(reg.balance)||0:bal,false);
     }else if(!entries.length){
       const ords=myOrders();const rows=[];let b=0;const ST={pending:'بانتظار',delivering:'قيد التوصيل',delivered:'تم التسليم',rejected:'مرفوض'};
-      ords.slice().sort((a,b)=>new Date(a.date)-new Date(b.date)).forEach(o=>{if(o.status==='rejected')return;const paid=Number(o.deposit)||0,tot=Number(o.total)||0,rem=(o.remaining!=null)?Number(o.remaining):(tot-paid);b+=Math.max(0,rem);rows.push({date:o.date,label:'طلب #'+(o.no||'')+' · '+(ST[o.status]||o.status||''),debit:tot,credit:paid});});
+      ords.slice().sort((a,b)=>new Date(a.date)-new Date(b.date)).forEach(o=>{if(o.status==='rejected')return;const paid=Number(o.deposit)||0,tot=Number(o.total)||0,rem=(o.remaining!=null)?Number(o.remaining):(tot-paid);b+=Math.max(0,rem);rows.push({date:o.date,label:'طلب #'+(o.no||'')+' · '+(ST[o.status]||o.status||''),debit:tot,credit:paid,ref:'inv',no:o.saleNo||o.no,items:(o.items||[]).map(it=>({n:it.name,q:it.qty,p:it.price,t:(Number(it.price)||0)*(Number(it.qty)||0)})),total:tot,paid:paid,invImg:o.invoiceImg||''});});
       if(rows.length)renderMyStmt(vv,rows,b,false);else renderMyStmt(vv,[],0,false);
     }
   }).catch(()=>{});
 }
+function showStmtInvoice(ix){
+  const e=(window._stmtEntries||[])[ix];if(!e){toast('غير متاح','err');return;}
+  if(!(e.items&&e.items.length)){toast('لا تفاصيل متاحة لهذه الفاتورة','err');return;}
+  const cell='padding:7px 9px;border:1px solid var(--line);font-size:12.5px';
+  const rows=e.items.map(it=>`<tr><td style="${cell};text-align:start">${esc(it.n||'')}</td><td style="${cell};text-align:center">${money(it.q)}</td><td style="${cell};text-align:center">${money(it.p)}</td><td style="${cell};text-align:center"><b>${money(it.t)}</b></td></tr>`).join('');
+  const total=Number(e.total)||0,paid=Number(e.paid)||0,rem=Math.max(0,total-paid);
+  let img='';try{const ord=(myOrders()||[]).find(o=>o.invoiceImg&&(o.saleNo===e.no));if(ord&&ord.invoiceImg)img=`<div style="margin-top:12px"><div class="muted" style="font-size:11px;margin-bottom:4px">صورة الفاتورة:</div><img src="${ord.invoiceImg}" style="width:100%;border:1px solid var(--line);border-radius:10px"></div>`;}catch(_){}
+  if(!img&&e.invImg)img=`<div style="margin-top:12px"><img src="${e.invImg}" style="width:100%;border:1px solid var(--line);border-radius:10px"></div>`;
+  const body=`<div id="stmtInv" dir="rtl">
+    <div style="display:flex;justify-content:space-between;margin-bottom:10px"><b style="font-size:15px">فاتورة #${esc(e.no||'')}</b><span class="muted" style="font-size:12px">${fmtDate(e.date)}</span></div>
+    <table style="width:100%;border-collapse:collapse">
+      <thead><tr style="background:var(--surface-2)"><th style="${cell};text-align:start">الصنف</th><th style="${cell};text-align:center">الكمية</th><th style="${cell};text-align:center">السعر</th><th style="${cell};text-align:center">الإجمالي</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div style="margin-top:10px;font-size:13px">
+      <div style="display:flex;justify-content:space-between;padding:3px 0"><span>الإجمالي</span><b>${m(total)}</b></div>
+      <div style="display:flex;justify-content:space-between;padding:3px 0;color:var(--success)"><span>المدفوع</span><b>${money(paid)}</b></div>
+      <div style="display:flex;justify-content:space-between;padding:3px 0;color:${rem>0?'var(--danger)':'inherit'}"><span>المتبقّي</span><b>${money(rem)}</b></div>
+    </div>${img}</div>`;
+  modal({title:'تفاصيل الفاتورة',size:'lg',body,actions:[{label:'طباعة',icon:I.print,fn:()=>{printEl('stmtInv');return false;}},{label:'رجوع للكشف',primary:true,fn:()=>{closeModal();setTimeout(()=>renderMyStmt(window._stmtV,window._stmtEntries,window._stmtBal,false),130);return false;}}]});
+}
 function renderMyStmt(v,entries,bal,loading){
   const cell='padding:8px 10px;border:1px solid var(--line)';
   entries=(entries||[]).slice().sort((a,b)=>new Date(a.date)-new Date(b.date));
+  window._stmtEntries=entries;window._stmtV=v;window._stmtBal=Number(bal)||0;
   bal=Number(bal)||0;
   const totBuy=entries.reduce((a,e)=>a+(Number(e.debit)||0),0);
   const totPaid=entries.reduce((a,e)=>a+(Number(e.credit)||0),0);
   const net=entries.reduce((a,e)=>a+((Number(e.debit)||0)-(Number(e.credit)||0)),0);
   const opening=bal-net;
   let run=opening;
-  const movesRows=entries.map(e=>{run+=((Number(e.debit)||0)-(Number(e.credit)||0));return `<tr><td style="${cell};text-align:center" class="muted">${fmtDate(e.date)}</td><td style="${cell};text-align:start">${esc(e.label||'')}</td><td style="${cell};text-align:center">${e.debit?money(e.debit):'—'}</td><td style="${cell};text-align:center">${e.credit?money(e.credit):'—'}</td><td style="${cell};text-align:center"><b style="color:${run>0?'var(--danger)':run<0?'var(--success)':'inherit'}">${money(run)}</b></td></tr>`;}).join('');
+  const movesRows=entries.map((e,ix)=>{run+=((Number(e.debit)||0)-(Number(e.credit)||0));const clk=(e.ref==='inv'&&e.items&&e.items.length);return `<tr ${clk?`onclick="showStmtInvoice(${ix})" style="cursor:pointer"`:''}><td style="${cell};text-align:center" class="muted">${fmtDate(e.date)}</td><td style="${cell};text-align:start">${esc(e.label||'')}${clk?' <span style="color:var(--primary);font-weight:700">👁 عرض</span>':''}</td><td style="${cell};text-align:center">${e.debit?money(e.debit):'—'}</td><td style="${cell};text-align:center">${e.credit?money(e.credit):'—'}</td><td style="${cell};text-align:center"><b style="color:${run>0?'var(--danger)':run<0?'var(--success)':'inherit'}">${money(run)}</b></td></tr>`;}).join('');
   const openRow=`<tr style="background:var(--surface-2,#f1f5f9)"><td style="${cell};text-align:center" class="muted">—</td><td style="${cell};text-align:start;font-weight:700">رصيد افتتاحي</td><td style="${cell};text-align:center">—</td><td style="${cell};text-align:center">—</td><td style="${cell};text-align:center"><b>${money(opening)}</b></td></tr>`;
   const curRow=`<tr style="background:var(--primary-soft)"><td style="${cell}"></td><td style="${cell};text-align:start;font-weight:800">الرصيد الحالي</td><td style="${cell}"></td><td style="${cell}"></td><td style="${cell};text-align:center"><b style="color:${bal>0?'var(--danger)':bal<0?'var(--success)':'inherit'}">${money(bal)}</b></td></tr>`;
   const body=`<div id="myStmt" dir="rtl">
@@ -7209,11 +7289,15 @@ function openAccountSheet(){
   if(reg&&loyOn()){try{const pr=cloudGetReg(v.id);if(pr&&pr.then)pr.then(rg=>{if(rg&&rg.points!=null){_myPoints=Number(rg.points)||0;const el=document.getElementById('myLoyPts');if(el)el.textContent=money(_myPoints);}}).catch(()=>{});}catch(e){}}
 }
 function customerLogout(){
-  try{localStorage.removeItem('sadaqa_visitor');}catch(e){}
-  window._verifiedToast=false;
-  updateMenuIdentity();
-  toast('تم تسجيل الخروج','ok');
-  showStore();
+  confirmDlg('تسجيل الخروج؟','هل تريد الخروج من حسابك؟ يمكنك تسجيل الدخول مجدّداً في أي وقت.',()=>{
+    try{localStorage.removeItem('sadaqa_visitor');}catch(e){}
+    window._verifiedToast=false;
+    try{if(window._accWatch){window._accWatch();window._accWatch=null;}}catch(e){}
+    window._myBalance=0;window._acctBlocked=false;window._fraudStrikes=0;
+    updateMenuIdentity();
+    toast('تم تسجيل الخروج','ok');
+    showStore();
+  });
 }
 let _liPhone=null;
 function otpHash(s){let h=5381;s=String(s);for(let i=0;i<s.length;i++){h=((h<<5)+h+s.charCodeAt(i))>>>0;}return String(h);}
