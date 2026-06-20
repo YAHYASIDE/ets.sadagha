@@ -3070,9 +3070,9 @@ function invoiceBodyHTML(sale){
             <span style="font-size:13px">الإجمالي</span><b style="font-size:18px;font-variant-numeric:tabular-nums">${m(sale.total)}</b>
           </div>
           ${totalRow('المدفوع',m(sale.paid),{color:'#000',lblColor:'#000',big:true})}
-          ${sale.customerId?totalRow('رصيد الحساب قبل هذه الفاتورة',balText(sale.balanceBefore||0),{border:true}):''}
+          ${sale.customerId?totalRow('رصيد الحساب قبل الفاتورة',balText(sale.balanceBefore||0),{border:true}):''}
           ${sale.remaining>0?totalRow('المتبقّي من هذه الفاتورة',m(sale.remaining),{color:'#DC2626',border:true}):totalRow('حالة الفاتورة','مدفوعة بالكامل',{color:'#15803D',lblColor:'#000',border:true})}
-          ${sale.customerId?totalRow('رصيد حسابكم الحالي',balText(invLiveBal(sale)),{color:'#1D4ED8',border:true,big:true}):''}
+          ${sale.customerId?totalRow('رصيد الحساب بعد الفاتورة',balText(sale.balanceAfter!=null?sale.balanceAfter:invLiveBal(sale)),{color:'#1D4ED8',border:true,big:true}):''}
         </div>
       </div>
 
@@ -3927,7 +3927,7 @@ function vchPartyName(v){
   if(v.partyType==='supplier'){const s=DB.suppliers.find(x=>x.id===v.partyId);return s?s.name:(v.partyName||'مورد');}
   return v.partyName||'حساب آخر';
 }
-const APP_BUILD='يومية-جديدة · 20/06 #93';
+const APP_BUILD='يومية-جديدة · 20/06 #94';
 let jrnDay=null,jrnBox='',jrnQ='';
 function journalEntries(day,boxId){
   const E=[];const sameDay=d=>(d||'').slice(0,10)===day;
@@ -5113,14 +5113,15 @@ function convertOrder(id){
     const subtotal=items.reduce((a,i)=>a+i.total,0);const total=subtotal;
     const paid=o.payMode==='cod'?0:(Number(o.deposit)||0);const remaining=total-paid;
     let cust=DB.customers.find(c=>digitsOnly(c.phone)===digitsOnly(o.phone)&&(c.cc||'222')===(o.cc||'222'));
-    if(!cust&&remaining>0){cust={id:uid('c'),name:o.name,cc:o.cc||'222',phone:o.phone,phone2:'',fax:'',address:o.addr||'',image:'',balance:0};DB.customers.push(cust);}
+    if(!cust&&o.phone){cust={id:uid('c'),name:o.name,cc:o.cc||'222',phone:o.phone,phone2:'',fax:'',address:o.addr||'',image:'',balance:0,fromReg:true};DB.customers.push(cust);}
+    const balBefore=cust?(Number(cust.balance)||0):0;
     const type=remaining>0?'credit':'cash';
     const boxId=o.payAppId||defBox();
     if(DB.seq&&!DB.seq.sale)DB.seq.sale=1;const no=DB.seq.sale;DB.seq.sale++;
     const profit=items.reduce((a,i)=>a+(i.service?0:((i.price-(i.cost||0))*i.qty)),0);
     const sale={id:uid('inv'),no,type,date:new Date().toISOString(),
       customerId:cust?cust.id:'',customerName:cust?cust.name:o.name,warehouseId:wh,warehouseName:whName(wh),boxId,boxName:boxName(boxId),
-      items,subtotal,discount:0,total,paid,remaining,profit,
+      items,subtotal,discount:0,total,paid,remaining,profit,balanceBefore:balBefore,balanceAfter:balBefore+(remaining>0?remaining:0),
       payments:paid>0?[{amount:paid,date:todayISO(),note:'دفعة طلب #'+o.no+(o.payApp?(' عبر '+o.payApp):''),box:boxId,boxName:boxName(boxId)}]:[],
       source:'order',orderId:o.id};
     items.forEach(it=>{if(it.service)return;const p=DB.products.find(x=>x.id===it.id);if(p){p.qty=(Number(p.qty)||0)-it.qty;if(!p.stock)p.stock={};p.stock[wh]=(Number(p.stock[wh])||0)-it.qty;cloudPutProduct(p);}});
