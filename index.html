@@ -1522,7 +1522,10 @@ function pendingRegCount(){return (DB.registrations||[]).filter(r=>!r.verified).
 function pendingOrderCount(){return (DB.orders||[]).filter(o=>(o.status||'pending')==='pending').length;}
 const ORDER_STAGES={pending:{t:'قيد المراجعة',bg:'#FEF3C7',fg:'#92400E',ic:'⏳'},delivering:{t:'جاري التوصيل',bg:'#DBEAFE',fg:'#1E40AF',ic:'🚚'},delivered:{t:'تم التسليم',bg:'#DCFCE7',fg:'#166534',ic:'✅'},rejected:{t:'ملغى',bg:'#FEE2E2',fg:'#B91C1C',ic:'✖'}};
 function orderStage(o){return ORDER_STAGES[(o&&o.status)||'pending']||ORDER_STAGES.pending;}
-function setOrderStatus(id,st){const o=(DB.orders||[]).find(x=>x.id===id);if(!o)return;o.status=st;cloudSetOrder(id,{status:st}).catch(()=>{});save();updateOrderBadge();toast('حالة الطلب: '+(ORDER_STAGES[st]?ORDER_STAGES[st].t:st),'ok');if(current==='orders')renderOrders();}
+function setOrderStatus(id,st){const o=(DB.orders||[]).find(x=>x.id===id);if(!o)return;o.status=st;cloudSetOrder(id,{status:st}).catch(()=>{});save();updateOrderBadge();
+  try{const msg=st==='delivering'?('🚚 طلبك #'+o.no+' في الطريق إليك'):st==='delivered'?('✅ تم تسليم طلبك #'+o.no+' — شكراً لك'):st==='pending'?('⏳ طلبك #'+o.no+' قيد المراجعة'):('تحديث على طلبك #'+o.no);
+    if(o.customerId&&typeof custTxn==='function')custTxn(o.customerId,msg);}catch(e){}
+  toast('حالة الطلب: '+(ORDER_STAGES[st]?ORDER_STAGES[st].t:st)+' — أُشعِر الزبون','ok');if(current==='orders')renderOrders();}
 function navBadge(id){
   let n=0,cls='';
   if(id==='regs'){n=pendingRegCount();cls='reg-badge';}
@@ -3713,7 +3716,7 @@ function vchPartyName(v){
   if(v.partyType==='supplier'){const s=DB.suppliers.find(x=>x.id===v.partyId);return s?s.name:(v.partyName||'مورد');}
   return v.partyName||'حساب آخر';
 }
-const APP_BUILD='يومية-جديدة · 20/06 #67';
+const APP_BUILD='يومية-جديدة · 20/06 #70';
 let jrnDay=null,jrnBox='',jrnQ='';
 function journalEntries(day,boxId){
   const E=[];const sameDay=d=>(d||'').slice(0,10)===day;
@@ -4858,7 +4861,14 @@ function custStatementEntries(cust){
 }
 function syncCustToReg(cust){
   if(!cust||!cust.phone)return;const key=regKey(cust.cc,cust.phone);
-  try{cloudSetReg(key,{balance:Number(cust.balance)||0,statement:custStatementEntries(cust).slice(-40),stmtAt:Date.now()});}catch(e){}
+  const ph=digitsOnly(cust.phone),cc=(cust.cc||'222');
+  const ids=DB.customers.filter(c=>digitsOnly(c.phone||'')===ph&&(c.cc||'222')===cc).map(c=>c.id);
+  const bal=DB.customers.filter(c=>ids.includes(c.id)).reduce((a,c)=>a+(Number(c.balance)||0),0);
+  const entries=[];
+  (DB.sales||[]).filter(s=>ids.includes(s.customerId)).forEach(s=>{const ret=s.type==='return';entries.push({date:s.date,label:'فاتورة #'+s.no+(ret?' (مرتجع)':s.type==='credit'?' (آجل)':' (نقدي)'),debit:ret?0:(Number(s.total)||0),credit:(Number(s.paid)||0)+(ret?(Number(s.total)||0):0)});});
+  (DB.custPays||[]).filter(pp=>ids.includes(pp.custId)).forEach(pp=>{const a=Number(pp.amount)||0;entries.push({date:pp.date,label:(a>=0?'دفعة مسدّدة':'صرف/إرجاع')+(pp.note?(' — '+pp.note):''),debit:a<0?-a:0,credit:a>0?a:0});});
+  entries.sort((a,b)=>new Date(a.date)-new Date(b.date));
+  try{cloudSetReg(key,{balance:bal,statement:entries.slice(-40),stmtAt:Date.now()});}catch(e){}
 }
 function loyEarn(key,amount,reason){if(!loyOn()||!key)return 0;const pts=Math.floor((Number(amount)||0)*loyEarnRate()/100);if(pts>0){loyAdd(key,pts,reason||'كسب من شراء');try{if(typeof cloudSetReg==='function')cloudSetReg(key,{points:loyPoints(key)});}catch(e){}}return pts;}
 function loyManage(key,name){
@@ -4904,10 +4914,11 @@ function convertOrder(id){
     if(cust&&remaining>0)cust.balance=(Number(cust.balance)||0)+remaining;
     if(paid>0)addCash('in',paid,'دفعة طلب #'+o.no,sale.id,boxId);
     o.status='delivering';o.saleId=sale.id;cloudSetOrder(o.id,{status:'delivering',saleId:sale.id}).catch(()=>{});
-    // نقاط الولاء: اخصم المستبدلة وامنح المكتسبة
+    // نقاط الولاء: اخصم المستبدلة وامنح المكتسبة على المبلغ المدفوع فعلاً (بعد خصم النقاط)
     if(o.customerId){
       if(Number(o.pointsUsed)>0)loyAdd(o.customerId,-Number(o.pointsUsed),'استبدال في طلب #'+o.no);
-      const earned=loyEarn(o.customerId,goodsTotal,'كسب من طلب #'+o.no);
+      const earnBase=Math.max(0,goodsTotal-ptsDisc);
+      const earned=loyEarn(o.customerId,earnBase,'كسب من طلب #'+o.no);
       if(earned>0)toast('مُنح الزبون '+earned+' '+loyName(),'ok');
       custTxn(o.customerId,'طلبك #'+o.no+' أصبح فاتورة بمبلغ '+m(total)+(earned?(' · +'+earned+' '+loyName()):''));
     }
@@ -6417,7 +6428,6 @@ function submitOrder(ctx){
     proof:_payProof||'',voice:ctx.voice||_voiceNote||'',status:'pending'};
   DB.orders=DB.orders||[];DB.orders.push(o);save();
   cloudAddOrder(o).catch(()=>{});
-  sendOrderWa(ctx,o);
   setTimeout(()=>{try{watchMyOrders();}catch(e){}},400);
   setTimeout(()=>orderReviewScreen(o),80);
   return true;
@@ -6474,7 +6484,6 @@ function watchMyOrders(){
         if(local&&data.invoiceImg&&!local.invoiceImg){local.invoiceImg=data.invoiceImg;try{save();}catch(e){}if(typeof renderMyOrders==='function')renderMyOrders();}
         if(local&&local.status!==data.status){
           local.status=data.status;try{save();}catch(e){}
-          const stg=ORDER_STAGES[data.status];if(stg)showInAppNotif('🚚 تحديث طلبك #'+o.no,'حالة طلبك الآن: '+stg.t);
           if(typeof renderMyOrders==='function')renderMyOrders();
         }
         if(data.status==='delivered'||data.status==='rejected'){if(window._ordWatch[o.id]){try{window._ordWatch[o.id]();}catch(e){}delete window._ordWatch[o.id];}}
@@ -6484,12 +6493,13 @@ function watchMyOrders(){
 }
 function orderReviewScreen(o){
   CART=[];saveCart();updateCartBadge();try{renderStoreGrid();renderDeals();}catch(e){}closeCart();
+  try{showInAppNotif('✅ تم استلام طلبكم (#'+o.no+')','نسعى إلى تجهيزه وإرساله بأسرع وقت، وستصلك إشعارات بحالته.');}catch(e){}
   modal({size:'sm',body:`
     <div style="text-align:center;padding:6px 4px 2px">
-      <div style="width:74px;height:74px;border-radius:50%;background:#FEF9C3;display:grid;place-items:center;margin:0 auto 14px;font-size:34px">⏳</div>
-      <h2 style="font-size:21px;font-weight:800;margin:0 0 10px">طلبك قيد المراجعة</h2>
-      <p style="font-size:14px;font-weight:700;margin:0 0 6px">تم استلام طلبك بنجاح! (#${o.no})</p>
-      <p class="muted" style="font-size:13px;line-height:1.85;margin:0 0 14px">سيراجع المتجر طلبك ويؤكّده قريباً، وتصلك إشعارات بتحديثات حالته.<br>الإجمالي: <b>${money(o.total)} ${CUR()}</b>${o.payMode!=='cod'?`<br>مدفوع: ${money(o.deposit)} ${CUR()}`:''}${(o.remaining>0&&o.payMode!=='cod')?` · الباقي عند الاستلام: ${money(o.remaining)} ${CUR()}`:''}</p>
+      <div style="width:74px;height:74px;border-radius:50%;background:#DCFCE7;display:grid;place-items:center;margin:0 auto 14px;font-size:34px">✅</div>
+      <h2 style="font-size:21px;font-weight:800;margin:0 0 10px">تم استلام طلبكم</h2>
+      <p style="font-size:14px;font-weight:700;margin:0 0 6px">شكراً لك! (طلب #${o.no})</p>
+      <p class="muted" style="font-size:13px;line-height:1.85;margin:0 0 14px">نحن نسعى إلى تجهيز طلبك وإرساله بأسرع وقت. ستصلك إشعارات بتحديثات حالته أولاً بأول.<br>الإجمالي: <b>${money(o.total)} ${CUR()}</b>${o.payMode!=='cod'?`<br>مدفوع: ${money(o.deposit)} ${CUR()}`:''}${(o.remaining>0&&o.payMode!=='cod')?` · الباقي عند الاستلام: ${money(o.remaining)} ${CUR()}`:''}</p>
     </div>`,
     actions:[
       {label:'متابعة طلبي',primary:true,icon:I.store,fn:()=>{closeModal();setTimeout(openMyOrders,150);return false;}},
@@ -6865,11 +6875,15 @@ function myAccountStatement(){
 function renderMyStmt(v,entries,bal){
   const cell='padding:8px 10px;border:1px solid var(--line)';
   entries=(entries||[]).slice().sort((a,b)=>new Date(a.date)-new Date(b.date));
+  bal=Number(bal)||0;
   const totBuy=entries.reduce((a,e)=>a+(Number(e.debit)||0),0);
   const totPaid=entries.reduce((a,e)=>a+(Number(e.credit)||0),0);
   const net=entries.reduce((a,e)=>a+((Number(e.debit)||0)-(Number(e.credit)||0)),0);
-  let run=(Number(bal)||0)-net;
-  const rows=entries.map(e=>{run+=((Number(e.debit)||0)-(Number(e.credit)||0));return `<tr><td style="${cell};text-align:center" class="muted">${fmtDate(e.date)}</td><td style="${cell};text-align:start">${esc(e.label||'')}</td><td style="${cell};text-align:center">${e.debit?money(e.debit):''}</td><td style="${cell};text-align:center">${e.credit?money(e.credit):''}</td><td style="${cell};text-align:center"><b>${money(run)}</b></td></tr>`;}).join('');
+  const opening=bal-net;
+  let run=opening;
+  const movesRows=entries.map(e=>{run+=((Number(e.debit)||0)-(Number(e.credit)||0));return `<tr><td style="${cell};text-align:center" class="muted">${fmtDate(e.date)}</td><td style="${cell};text-align:start">${esc(e.label||'')}</td><td style="${cell};text-align:center">${e.debit?money(e.debit):'—'}</td><td style="${cell};text-align:center">${e.credit?money(e.credit):'—'}</td><td style="${cell};text-align:center"><b style="color:${run>0?'var(--danger)':run<0?'var(--success)':'inherit'}">${money(run)}</b></td></tr>`;}).join('');
+  const openRow=`<tr style="background:var(--surface-2,#f1f5f9)"><td style="${cell};text-align:center" class="muted">—</td><td style="${cell};text-align:start;font-weight:700">رصيد افتتاحي</td><td style="${cell};text-align:center">—</td><td style="${cell};text-align:center">—</td><td style="${cell};text-align:center"><b>${money(opening)}</b></td></tr>`;
+  const curRow=`<tr style="background:var(--primary-soft)"><td style="${cell}"></td><td style="${cell};text-align:start;font-weight:800">الرصيد الحالي</td><td style="${cell}"></td><td style="${cell}"></td><td style="${cell};text-align:center"><b style="color:${bal>0?'var(--danger)':bal<0?'var(--success)':'inherit'}">${money(bal)}</b></td></tr>`;
   const body=`<div id="myStmt" dir="rtl">
     <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px">
       <div><b style="font-size:15px">${esc(v.name)}</b><div class="muted" style="font-size:12px" dir="ltr">+${esc(v.cc||'222')} ${esc(v.phone||'')}</div></div>
@@ -6882,8 +6896,9 @@ function renderMyStmt(v,entries,bal){
     </div>
     <table style="width:100%;border-collapse:collapse;font-size:13px">
       <thead><tr style="background:var(--surface-2)"><th style="${cell};text-align:center">التاريخ</th><th style="${cell};text-align:start">البيان</th><th style="${cell};text-align:center">مدين (عليك)</th><th style="${cell};text-align:center">دائن (مدفوع)</th><th style="${cell};text-align:center">الرصيد</th></tr></thead>
-      <tbody>${rows||''}</tbody>
+      <tbody>${openRow}${movesRows}${curRow}</tbody>
     </table>
+    ${!entries.length?'<p class="muted" style="font-size:12px;margin-top:8px;text-align:center">لا توجد حركات بعد على حسابك.</p>':''}
     <p class="muted" style="font-size:11px;margin-top:8px">للاستفسار عن حسابك تواصل معنا عبر واتساب.</p></div>`;
   const el=document.getElementById('modalRoot');
   if(el)el.innerHTML=body;else modal({title:'كشف حسابي',size:'lg',body,actions:[{label:'طباعة',icon:I.print,fn:()=>{printEl('myStmt');return false;}},{label:'إغلاق',primary:true,fn:()=>true}]});
