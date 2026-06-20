@@ -1134,10 +1134,13 @@ function cloudInit(){
       if(current==='regs'){_regsCache=list.slice();if(typeof regRerender==='function')regRerender();}
       if(typeof updateRegBadge==='function')updateRegBadge();
       const pend=list.filter(r=>!r.verified);
+      const loginReqs=list.filter(r=>r.loginStatus==='pending');
       if(window._regInit){
         const newest=pend.length?Math.max.apply(null,pend.map(r=>new Date(r.date||0).getTime())):0;
         const seen=Number(localStorage.getItem('sadaqa_seen_reg')||0);
         if(pend.length&&newest>seen){try{showInAppNotif('🔔 زبون جديد بانتظار التوثيق',pend.length+' زبون بحاجة لمراجعتك في «تسجيلات الزبائن»');}catch(e){}}
+        if(loginReqs.length){const ln=Math.max.apply(null,loginReqs.map(r=>r.loginReqAt||0));const ls=Number(localStorage.getItem('sadaqa_seen_loginreq')||0);
+          if(ln>ls){localStorage.setItem('sadaqa_seen_loginreq',String(ln));try{showInAppNotif('🔑 طلب تسجيل دخول','زبون يطلب رمز دخول — أرسله له من «تسجيلات الزبائن»');}catch(e){}if(current==='regs'){_regsCache=list.slice();if(typeof regRerender==='function')regRerender();}}}
       }
       window._regInit=true;
     }, e=>{});
@@ -3705,7 +3708,7 @@ function vchPartyName(v){
   if(v.partyType==='supplier'){const s=DB.suppliers.find(x=>x.id===v.partyId);return s?s.name:(v.partyName||'مورد');}
   return v.partyName||'حساب آخر';
 }
-const APP_BUILD='يومية-جديدة · 20/06 #63';
+const APP_BUILD='يومية-جديدة · 20/06 #64';
 let jrnDay=null,jrnBox='',jrnQ='';
 function journalEntries(day,boxId){
   const E=[];const sameDay=d=>(d||'').slice(0,10)===day;
@@ -4910,13 +4913,14 @@ function regsTable(list){
   list=(list||[]).slice().sort((a,b)=>new Date(b.date)-new Date(a.date));
   if(!list.length)return `<div class="empty" style="padding:30px">${svg(I.people,38)}<b>لا تسجيلات بعد</b>ستظهر هنا تسجيلات الزبائن من المتجر</div>`;
   return `<div class="tbl-wrap"><table style="font-size:13px"><thead><tr><th>الاسم</th><th>الهاتف</th><th>الكود</th><th>التاريخ</th><th>الحالة</th><th></th></tr></thead><tbody>
-    ${list.map(r=>`<tr>
+    ${list.map(r=>`<tr${(r.loginStatus==='pending')?' style="background:#FEF3C7"':''}>
       <td><div style="display:flex;align-items:center;gap:8px">${r.image?`<span style="width:30px;height:30px;border-radius:50%;flex:0 0 auto;background:#e5e7eb center/cover no-repeat;background-image:url(${r.image})"></span>`:''}<b>${esc(r.name)}</b></div></td>
       <td class="t-num" dir="ltr">+${esc(r.cc||'222')} ${esc(r.phone||'')}</td>
       <td class="t-num">${esc(r.code||'—')}</td>
       <td class="muted" style="font-size:11.5px">${fmtDateTime(r.date)}</td>
-      <td>${r.verified?'<span class="badge b-ok">مؤكَّد</span>':'<span class="badge" style="background:#FEF3C7;color:#92400E">بانتظار</span>'}</td>
+      <td>${r.verified?'<span class="badge b-ok">مؤكَّد</span>':'<span class="badge" style="background:#FEF3C7;color:#92400E">بانتظار</span>'}${r.loginStatus==='pending'?'<br><span class="badge" style="background:#DBEAFE;color:#1E40AF;font-size:9px;margin-top:3px">🔑 طلب دخول</span>':''}</td>
       <td style="white-space:nowrap;text-align:end">
+        ${r.loginStatus==='pending'?`<button class="btn btn-sm" style="background:#16a34a;color:#fff;border-color:#16a34a" onclick="sendLoginCodeToCust('${r.id}')">${svg(I.wa,13)} إرسال رمز الدخول</button>`:''}
         ${r.verified?'':`<button class="btn btn-sm btn-primary" onclick="regVerify('${r.id}')">${svg(I.check,13)} تأكيد</button>`}
         <button class="btn btn-icon btn-ghost btn-sm" title="إرسال كود عبر واتساب" style="color:#16a34a" onclick="regSendCode('${r.id}')">${svg(I.wa,15)}</button>
         <button class="btn btn-icon btn-ghost btn-sm" title="إضافة كزبون" onclick="regToCustomer('${r.id}')">${svg(I.plus,15)}</button>
@@ -4933,6 +4937,15 @@ function regVerify(id){const r=regFind(id);if(!r)return;r.verified=true;cloudSet
   }catch(e){}
   regToCustomer(id,true);toast('تم تأكيد الزبون وإضافته للعملاء','ok');regRerender();if(typeof updateRegBadge==='function')updateRegBadge();}
 function regSendCode(id){const r=regFind(id);if(!r)return;const code=r.code||String(Math.floor(1000+Math.random()*9000));r.code=code;cloudSetReg(id,{code}).catch(()=>{});waOpen(waNum(r.cc,r.phone),`مرحباً ${r.name}، كود التأكيد الخاص بك في ${DB.settings.name||'مؤسسة الصداقة'}: ${code}`);}
+function sendLoginCodeToCust(id){
+  const r=regFind(id);if(!r)return;
+  const code=genLoginCode();
+  const exp=Date.now()+10*60000;
+  cloudSetReg(id,{loginCodeHash:otpHash(id+':'+code),loginCodeExp:exp,loginStatus:'sent'}).catch(()=>{});
+  if(_regsCache){const rr=_regsCache.find(x=>x.id===id);if(rr){rr.loginStatus='sent';}regRerender();}
+  waOpen(waNum(r.cc,r.phone),`رمز الدخول إلى حسابك في ${DB.settings.name||'مؤسسة الصداقة'}: ${code}\nصالح 10 دقائق. لا تشاركه مع أحد.`);
+  toast('أُرسل رمز الدخول عبر واتساب','ok');
+}
 function regToCustomer(id,silent){const r=regFind(id);if(!r)return;const exists=DB.customers.find(c=>digitsOnly(c.phone)===digitsOnly(r.phone)&&(c.cc||'222')===(r.cc||'222'));if(exists){if(!silent)toast('الزبون موجود مسبقاً في العملاء','ok');return;}DB.customers.push({id:uid('c'),name:r.name,cc:r.cc||'222',phone:r.phone,phone2:'',fax:'',address:'',image:r.image||'',balance:0});save();if(!silent)toast('تمت إضافته إلى العملاء','ok');}
 function regDelete(id){confirmDlg('حذف التسجيل؟','سيُحذف طلب التسجيل نهائياً.',()=>{_regsCache=(_regsCache||[]).filter(r=>r.id!==id);DB.registrations=(DB.registrations||[]).filter(r=>r.id!==id);cloudDelReg(id).catch(()=>{});save();regRerender();if(typeof updateRegBadge==='function')updateRegBadge();toast('تم الحذف','ok');});}
 
@@ -6865,11 +6878,13 @@ function customerLogout(){
   toast('تم تسجيل الخروج','ok');
   showStore();
 }
-let _otpConfirm=null,_otpRecaptcha=null,_otpPhone=null;
+let _liPhone=null;
+function otpHash(s){let h=5381;s=String(s);for(let i=0;i<s.length;i++){h=((h<<5)+h+s.charCodeAt(i))>>>0;}return String(h);}
+function genLoginCode(){return String(Math.floor(100000+Math.random()*900000));}
 function customerLogin(){
-  _otpConfirm=null;_otpPhone=null;
+  _liPhone=null;
   modal({title:'تسجيل الدخول',size:'sm',body:`
-    <p class="muted" style="font-size:13px;margin-bottom:12px">أدخل رقم هاتفك المسجّل، وسيصلك <b>رمز تحقّق برسالة نصّية</b> لتأكيد أنّك صاحب الرقم.</p>
+    <p class="muted" style="font-size:13px;margin-bottom:12px">أدخل رقم هاتفك المسجّل، وسيصلك <b>رمز تحقّق عبر واتساب</b> من المتجر لتأكيد أنّك صاحب الحساب.</p>
     <div class="field"><label>رقم الهاتف</label>
       <div style="display:flex;gap:8px">
         <select class="inp" id="li_cc" style="max-width:155px">${ccOptions('222')}</select>
@@ -6877,49 +6892,46 @@ function customerLogin(){
       </div>
     </div>
     <div id="otpBox" style="display:none;margin-top:12px">
-      <div class="field"><label>رمز التحقّق (وصلك في رسالة)</label><input class="inp" id="li_otp" inputmode="numeric" placeholder="مثال: 123456"></div>
+      <div class="field"><label>رمز التحقّق (وصلك عبر واتساب)</label><input class="inp" id="li_otp" inputmode="numeric" placeholder="مثال: 123456"></div>
+      <p class="muted" style="font-size:11.5px;margin-top:6px">لم يصلك الرمز؟ <a onclick="requestLoginCode(true)" style="color:var(--primary);font-weight:700;cursor:pointer">إعادة الطلب</a></p>
     </div>
-    <button id="otpBtn" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:14px" onclick="sendLoginOtp()">${svg(I.check,16)} إرسال رمز التحقّق</button>
-    <div id="recaptcha-container"></div>
+    <button id="otpBtn" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:14px" onclick="requestLoginCode()">${svg(I.wa,16)} طلب رمز الدخول</button>
     <p class="muted" style="font-size:11.5px;margin-top:10px">ليس لديك حساب؟ <a onclick="closeModal();visitorRegister()" style="color:var(--primary);font-weight:700;cursor:pointer">سجّل حساباً جديداً</a></p>`,
-    actions:[{label:'إلغاء',fn:()=>{try{if(_otpRecaptcha){_otpRecaptcha.clear();_otpRecaptcha=null;}}catch(e){}return true;}}]});
+    actions:[{label:'إلغاء',fn:()=>true}]});
 }
-function sendLoginOtp(){
+function requestLoginCode(resend){
   const cc=val('li_cc')||'222';const phone=digitsOnly(val('li_phone'));
   if(phone.length<6){toast('أدخل رقم هاتف صحيح','err');return;}
-  if(!AUTH||!window.firebase||!firebase.auth||!firebase.auth.RecaptchaVerifier){toast('خدمة التحقّق غير متاحة الآن — تحقّق من الإنترنت','err');return;}
-  _otpPhone={cc,phone};
-  const e164='+'+digitsOnly(cc)+phone.replace(/^0+/,'');
-  try{
-    if(!_otpRecaptcha)_otpRecaptcha=new firebase.auth.RecaptchaVerifier('recaptcha-container',{size:'invisible'});
-    toast('جارٍ إرسال الرمز...','ok');
-    AUTH.signInWithPhoneNumber(e164,_otpRecaptcha).then(cr=>{
-      _otpConfirm=cr;
-      const ob=document.getElementById('otpBox');if(ob)ob.style.display='block';
-      const btn=document.getElementById('otpBtn');if(btn){btn.innerHTML=svg(I.check,16)+' تأكيد وتسجيل الدخول';btn.setAttribute('onclick','confirmLoginOtp()');}
-      toast('أرسلنا رمز التحقّق إلى هاتفك 📩','ok');
-    }).catch(err=>{console.warn('otp',err);
-      const code=(err&&err.code)||'';
-      toast(code.includes('billing')||code.includes('not-enabled')?'التحقّق بالهاتف غير مُفعّل في الإعدادات':'تعذّر إرسال الرمز — حاول لاحقاً','err');
-      try{_otpRecaptcha.clear();}catch(e){}_otpRecaptcha=null;});
-  }catch(e){toast('تعذّر تهيئة التحقّق','err');}
+  const id=regKey(cc,phone);_liPhone={cc,phone,id};
+  toast('جارٍ إرسال الطلب...','ok');
+  const p=cloudGetReg(id);
+  const handle=reg=>{
+    if(!reg||!reg.name){toast('لا يوجد حساب بهذا الرقم — سجّل حساباً جديداً','err');return;}
+    try{cloudSetReg(id,{loginReqAt:Date.now(),loginStatus:'pending',loginName:reg.name});}catch(e){}
+    const ob=document.getElementById('otpBox');if(ob)ob.style.display='block';
+    const btn=document.getElementById('otpBtn');if(btn){btn.innerHTML=svg(I.check,16)+' تأكيد وتسجيل الدخول';btn.setAttribute('onclick','confirmLoginCode()');}
+    toast(resend?'أعدنا إرسال الطلب للمتجر':'أرسلنا طلبك للمتجر — سيصلك الرمز عبر واتساب قريباً','ok');
+  };
+  if(p&&p.then)p.then(handle).catch(()=>toast('تعذّر الاتصال — تحقّق من الإنترنت','err'));
+  else toast('لا اتصال بالسحابة','err');
 }
-function confirmLoginOtp(){
-  const code=digitsOnly(val('li_otp'));if(code.length<4){toast('أدخل الرمز المرسَل','err');return;}
-  if(!_otpConfirm){toast('أرسل الرمز أولاً','err');return;}
+function confirmLoginCode(){
+  if(!_liPhone){toast('اطلب الرمز أولاً','err');return;}
+  const code=digitsOnly(val('li_otp'));if(code.length<4){toast('أدخل الرمز المُرسَل','err');return;}
+  const {cc,phone,id}=_liPhone;
   toast('جارٍ التحقّق...','ok');
-  _otpConfirm.confirm(code).then(()=>{
-    const cc=_otpPhone.cc,phone=_otpPhone.phone,id=regKey(cc,phone);
-    try{if(!CUR_USER&&AUTH&&AUTH.signOut)AUTH.signOut();}catch(e){}
-    const proceed=reg=>{
-      if(reg&&reg.name){
-        setVisitor({id,name:reg.name,cc:reg.cc||cc,phone:reg.phone||phone,verified:!!reg.verified,image:reg.image||''});
-        updateMenuIdentity();closeModal();toast('مرحباً '+reg.name+(reg.verified?' (موثّق ✔)':' (بانتظار التفعيل)'),'ok');showStore();
-        setTimeout(()=>{try{watchVerification();}catch(e){}try{watchAccount();}catch(e){}},600);
-      }else{closeModal();toast('رقمك مؤكّد — أكمل إنشاء حسابك','ok');setTimeout(visitorRegister,200);}
-    };
-    const p=cloudGetReg(id);if(p&&p.then)p.then(proceed).catch(()=>proceed(null));else proceed(null);
-  }).catch(()=>toast('الرمز غير صحيح','err'));
+  const p=cloudGetReg(id);
+  const verify=reg=>{
+    if(!reg||reg.loginStatus!=='sent'||!reg.loginCodeHash){toast('لم يصلك الرمز بعد — انتظر رسالة واتساب من المتجر','err');return;}
+    if(reg.loginCodeExp&&Date.now()>reg.loginCodeExp){toast('انتهت صلاحية الرمز — اطلب رمزاً جديداً','err');return;}
+    if(otpHash(id+':'+code)!==reg.loginCodeHash){toast('الرمز غير صحيح','err');return;}
+    try{cloudSetReg(id,{loginStatus:'used',loginCodeHash:''});}catch(e){}
+    setVisitor({id,name:reg.name,cc:reg.cc||cc,phone:reg.phone||phone,verified:!!reg.verified,image:reg.image||''});
+    updateMenuIdentity();closeModal();toast('مرحباً '+reg.name+(reg.verified?' (موثّق ✔)':' (بانتظار التفعيل)'),'ok');showStore();
+    setTimeout(()=>{try{watchVerification();}catch(e){}try{watchAccount();}catch(e){}},600);
+  };
+  if(p&&p.then)p.then(verify).catch(()=>toast('تعذّر الاتصال','err'));
+  else toast('لا اتصال بالسحابة','err');
 }
 function awaitingActivationScreen(){
   const num=storeWaNumber();
