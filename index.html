@@ -775,7 +775,7 @@ html.dark .pd-thumb{background-color:#1B2742}
         <span class="mlabel" data-i18n="mSupport">فريق الدعم</span>
         <span class="micon" style="background:#E7F7EE;color:#25D366"><svg viewBox="0 0 24 24" fill="#25D366" width="18" height="18"><path d="M12 2a10 10 0 0 0-8.6 15l-1.3 4.8 4.9-1.3A10 10 0 1 0 12 2zm0 18.2c-1.6 0-3-.4-4.3-1.2l-.3-.2-2.9.8.8-2.8-.2-.3A8.2 8.2 0 1 1 12 20.2z"/></svg></span>
       </button>
-      <button class="menu-item" onclick="closeStoreMenu();adminLogin()">
+      <button class="menu-item" id="menuAdminBtn" onclick="closeStoreMenu();adminLogin()">
         <span class="mlabel" data-i18n="mAdmin">دخول كمدير</span>
         <span class="micon" style="background:#E5EDFF;color:#1D4ED8"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg></span>
       </button>
@@ -3788,6 +3788,34 @@ function payDebtSheet(prefill){
     actions:[{label:'إرسال الدفعة',primary:true,icon:I.check,fn:()=>submitCustPayment()},{label:'إلغاء',fn:()=>true}]});
 }
 function cpSelApp(id){_cpApp=id;(payApps()||[]).forEach(a=>{const el=document.getElementById('cpapp_'+a.id);if(el)el.className='btn'+(a.id===id?' btn-primary':'');});const b=boxes().find(x=>x.id===id);const pn=document.getElementById('cp_paynum');if(pn)pn.innerHTML=(b&&(b.payNum||DB.settings.payNumber))?('حوّل إلى الرقم: <b dir="ltr">'+esc(b.payNum||DB.settings.payNumber)+'</b>'):'';}
+function payWithdrawSheet(prefill){
+  const v=getVisitor();if(!v||!v.id){toast('سجّل حسابك أولاً','err');visitorRegister();return;}
+  if(window._acctBlocked){toast('حسابك محظور — تواصل مع المتجر.','err');return;}
+  _cpApp='';
+  const apps=(typeof payApps==='function')?payApps():[];
+  modal({title:'سحب رصيد',size:'sm',body:`
+    <p class="muted" style="font-size:12.5px;margin-bottom:10px">اطلب سحب مبلغ من رصيدك. سيراجع المتجر طلبك ويصرف لك المبلغ ثم يُحدّث رصيدك.</p>
+    <div class="field"><label>المبلغ المطلوب سحبه (${CUR()})</label><input class="inp" id="wd_amt" type="number" inputmode="numeric" placeholder="المبلغ" value="${prefill>0?prefill:''}"></div>
+    ${apps.length?`<div class="field" style="margin-top:10px"><label>طريقة الاستلام (اختياري)</label>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+        ${apps.map(a=>`<button type="button" class="btn" id="wdapp_${a.id}" style="justify-content:center;font-size:12px;padding:9px 4px" onclick="wdSelApp('${a.id}')">${esc(a.name)}</button>`).join('')}
+      </div></div>`:''}
+    <div class="field" style="margin-top:10px"><label>ملاحظة / رقم الاستلام (اختياري)</label><input class="inp" id="wd_note" placeholder="مثال: حوّل إلى رقمي ..."></div>`,
+    actions:[{label:'إرسال طلب السحب',primary:true,icon:I.check,fn:()=>submitCustWithdraw()},{label:'إلغاء',fn:()=>true}]});
+}
+function wdSelApp(id){_cpApp=id;(payApps()||[]).forEach(a=>{const el=document.getElementById('wdapp_'+a.id);if(el)el.className='btn'+(a.id===id?' btn-primary':'');});}
+function submitCustWithdraw(){
+  if(window._acctBlocked){toast('حسابك محظور — تواصل مع المتجر.','err');return false;}
+  const v=getVisitor()||{};const amt=parseFloat(val('wd_amt'))||0;
+  if(amt<=0){toast('أدخل مبلغاً صحيحاً','err');return false;}
+  const appBox=boxes().find(b=>b.id===_cpApp);
+  const p={id:uid('cpr'),kind:'withdraw',customerId:v.id,name:v.name||'',cc:v.cc||'222',phone:v.phone||'',amount:amt,
+    app:appBox?appBox.name:'',box:_cpApp||'',proof:'',note:(val('wd_note')||'').trim(),date:new Date().toISOString(),status:'pending'};
+  cloudAddCustPayment(p).then(()=>{}).catch(()=>{});
+  closeModal();
+  try{showInAppNotif('✅ تم إرسال طلب السحب','سيراجع المتجر طلبك ويصرف لك المبلغ.');}catch(e){}
+  toast('أُرسل طلب السحب — بانتظار موافقة المتجر','ok');return false;
+}
 function cpPickProof(inp){const f=inp.files&&inp.files[0];if(!f)return;downscaleImage(f,d=>{_cpProof=d;const pv=document.getElementById('cp_proofPrev');if(pv)pv.innerHTML='<img src="'+d+'" style="max-width:100%;border-radius:8px">';});}
 function submitCustPayment(){
   if(window._acctBlocked){toast('حسابك محظور — تواصل مع المتجر.','err');return false;}
@@ -3808,36 +3836,46 @@ function openCustPayReviews(){
   localStorage.setItem('sadaqa_seen_custpay',String(Date.now()));
   const list=(window._custPayReqs||[]).slice().sort((a,b)=>new Date(b.date)-new Date(a.date));
   const pend=list.filter(p=>(p.status||'pending')==='pending');
-  const body=list.length?list.map(p=>{const st=p.status||'pending';return `<div style="border:1px solid var(--line);border-radius:12px;padding:11px;margin-bottom:10px">
-      <div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b>${esc(p.name||'زبون')}</b><b style="color:var(--primary-d);font-size:15px">${m(p.amount)}</b></div>
+  const body=list.length?list.map(p=>{const st=p.status||'pending';const isWd=(p.kind==='withdraw');return `<div style="border:1px solid var(--line);border-radius:12px;padding:11px;margin-bottom:10px;${isWd?'background:#FEF2F2':''}">
+      <div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b>${isWd?'🔻 طلب سحب · ':''}${esc(p.name||'زبون')}</b><b style="color:${isWd?'#B91C1C':'var(--primary-d)'};font-size:15px">${m(p.amount)}</b></div>
       <div class="muted" style="font-size:12px" dir="ltr">+${esc(p.cc||'222')} ${esc(p.phone||'')}</div>
-      <div class="muted" style="font-size:12px">عبر: ${esc(p.app||'تطبيق دفع')}${p.note?(' · '+esc(p.note)):''}<br>${fmtDateTime(p.date)}</div>
-      ${p.proof?`<img src="${p.proof}" style="max-width:100%;border-radius:8px;margin-top:6px;cursor:zoom-in" onclick="window.open('${p.proof}','_blank')">`:'<div class="muted" style="font-size:12px;margin-top:4px">⚠️ لا صورة إثبات</div>'}
-      ${st==='pending'?`<div style="background:#FEF9C3;border-radius:8px;padding:7px;margin-top:7px;font-size:12px;text-align:center">هل وصلك المبلغ فعلاً؟ أكِّد فقط بعد التحقّق.</div>
+      <div class="muted" style="font-size:12px">${isWd?'استلام عبر':'عبر'}: ${esc(p.app||(isWd?'غير محدّد':'تطبيق دفع'))}${p.note?(' · '+esc(p.note)):''}<br>${fmtDateTime(p.date)}</div>
+      ${isWd?'':(p.proof?`<img src="${p.proof}" style="max-width:100%;border-radius:8px;margin-top:6px;cursor:zoom-in" onclick="window.open('${p.proof}','_blank')">`:'<div class="muted" style="font-size:12px;margin-top:4px">⚠️ لا صورة إثبات</div>')}
+      ${st==='pending'?`<div style="background:${isWd?'#FEE2E2':'#FEF9C3'};border-radius:8px;padding:7px;margin-top:7px;font-size:12px;text-align:center">${isWd?'أكِّد فقط بعد صرف المبلغ فعلاً للزبون.':'هل وصلك المبلغ فعلاً؟ أكِّد فقط بعد التحقّق.'}</div>
         <div style="display:flex;gap:6px;margin-top:7px">
-        <button class="btn btn-sm" style="flex:1;justify-content:center;background:#16a34a;color:#fff;border:0" onclick="confirmCustPayment('${p.id}')">✔ نعم وصلني</button>
-        <button class="btn btn-sm" style="flex:1;justify-content:center;color:var(--danger)" onclick="rejectCustPayment('${p.id}')">✕ لم يصل</button></div>`
-        :`<div style="margin-top:6px"><span class="badge" style="${st==='confirmed'?'background:#DCFCE7;color:#15803D':'background:#FEE2E2;color:#B91C1C'}">${st==='confirmed'?'مؤكَّد ✔':'مرفوض'}</span>
+        <button class="btn btn-sm" style="flex:1;justify-content:center;background:#16a34a;color:#fff;border:0" onclick="confirmCustPayment('${p.id}')">${isWd?'✔ تم الصرف':'✔ نعم وصلني'}</button>
+        <button class="btn btn-sm" style="flex:1;justify-content:center;color:var(--danger)" onclick="rejectCustPayment('${p.id}')">${isWd?'✕ رفض':'✕ لم يصل'}</button></div>`
+        :`<div style="margin-top:6px"><span class="badge" style="${st==='confirmed'?'background:#DCFCE7;color:#15803D':'background:#FEE2E2;color:#B91C1C'}">${st==='confirmed'?(isWd?'تم الصرف ✔':'مؤكَّد ✔'):'مرفوض'}</span>
            <button class="btn btn-xs" style="margin-inline-start:8px;color:var(--danger)" onclick="cloudDelCustPayment('${p.id}');(window._custPayReqs=(window._custPayReqs||[]).filter(x=>x.id!=='${p.id}'));openCustPayReviews()">حذف</button></div>`}
-    </div>`;}).join(''):'<div class="empty" style="padding:24px">'+svg(I.wallet||I.cash,38)+'<b>لا مدفوعات من الزبائن بعد</b><span class="muted">عندما يرسل زبون دفعة من التطبيق تظهر هنا للتأكيد.</span></div>';
+    </div>`;}).join(''):'<div class="empty" style="padding:24px">'+svg(I.wallet||I.cash,38)+'<b>لا مدفوعات من الزبائن بعد</b><span class="muted">عندما يرسل زبون دفعة أو طلب سحب من التطبيق يظهر هنا للتأكيد.</span></div>';
   modal({title:'مدفوعات الزبائن'+(pend.length?(' ('+pend.length+')'):''),size:'lg',body,actions:[{label:'إغلاق',primary:true,fn:()=>true}]});
 }
 function confirmCustPayment(id){
   const p=(window._custPayReqs||[]).find(x=>x.id===id);if(!p)return;
+  const isWd=(p.kind==='withdraw');
   const ph=digitsOnly(p.phone||''),cc=(p.cc||'222');
   let c=DB.customers.find(x=>digitsOnly(x.phone||'')===ph&&(x.cc||'222')===cc);
   if(!c){c={id:uid('c'),name:p.name||('زبون '+p.phone),cc,phone:p.phone,phone2:'',fax:'',address:'',image:'',balance:0,fromReg:true};DB.customers.push(c);}
   const amt=Number(p.amount)||0;const box=(p.box&&boxes().some(b=>b.id===p.box))?p.box:defBox();
-  c.balance=(c.balance||0)-amt;
-  const vno=DB.seq.voucher++;const vid=uid('vch');
-  DB.vouchers.push({id:vid,no:vno,kind:'receipt',partyType:'customer',partyId:c.id,partyName:c.name,amount:amt,box,date:todayISO()+'T'+new Date().toISOString().slice(11),note:p.note||'دفعة من الزبون عبر التطبيق'});
-  DB.custPays.push({id:uid('cp'),custId:c.id,amount:amt,date:todayISO(),note:(p.note||'دفعة عبر التطبيق')+(p.app?(' ('+p.app+')'):''),box,voucher:vid});
-  addCash('in',amt,'دفعة من الزبون '+c.name+' عبر '+(p.app||'التطبيق'),vid,box);
-  save();
-  try{syncCustToReg(c);custTxn(custReg(c),'✅ تم تأكيد دفعتك بمبلغ '+m(amt)+' · رصيدك الآن: '+m(c.balance));}catch(e){}
+  const vno=DB.seq.voucher++;const vid=uid('vch');const tstamp=todayISO()+'T'+new Date().toISOString().slice(11);
+  if(isWd){
+    c.balance=(c.balance||0)+amt;
+    DB.vouchers.push({id:vid,no:vno,kind:'payment',partyType:'customer',partyId:c.id,partyName:c.name,amount:amt,box,date:tstamp,note:p.note||'سحب رصيد من الحساب'});
+    DB.custPays.push({id:uid('cp'),custId:c.id,amount:-amt,date:todayISO(),note:'سحب رصيد'+(p.note?(' — '+p.note):''),box,voucher:vid});
+    addCash('out',amt,'صرف سحب رصيد للزبون '+c.name,vid,box);
+    save();
+    try{syncCustToReg(c);custTxn(custReg(c),'✅ تم صرف سحبك بمبلغ '+m(amt)+' · رصيدك الآن: '+m(c.balance));}catch(e){}
+  }else{
+    c.balance=(c.balance||0)-amt;
+    DB.vouchers.push({id:vid,no:vno,kind:'receipt',partyType:'customer',partyId:c.id,partyName:c.name,amount:amt,box,date:tstamp,note:p.note||'دفعة من الزبون عبر التطبيق'});
+    DB.custPays.push({id:uid('cp'),custId:c.id,amount:amt,date:todayISO(),note:(p.note||'دفعة عبر التطبيق')+(p.app?(' ('+p.app+')'):''),box,voucher:vid});
+    addCash('in',amt,'دفعة من الزبون '+c.name+' عبر '+(p.app||'التطبيق'),vid,box);
+    save();
+    try{syncCustToReg(c);custTxn(custReg(c),'✅ تم تأكيد دفعتك بمبلغ '+m(amt)+' · رصيدك الآن: '+m(c.balance));}catch(e){}
+  }
   cloudSetCustPayment(id,{status:'confirmed',confirmedAt:Date.now()}).catch(()=>{});
   if(p)p.status='confirmed';
-  toast('تم تأكيد الدفعة وتحديث رصيد الزبون','ok');if(typeof render==='function')render();openCustPayReviews();
+  toast(isWd?'تم صرف السحب وتحديث الرصيد':'تم تأكيد الدفعة وتحديث رصيد الزبون','ok');if(typeof render==='function')render();openCustPayReviews();
 }
 function rejectCustPayment(id){
   const p=(window._custPayReqs||[]).find(x=>x.id===id);if(!p)return;
@@ -3880,7 +3918,7 @@ function vchPartyName(v){
   if(v.partyType==='supplier'){const s=DB.suppliers.find(x=>x.id===v.partyId);return s?s.name:(v.partyName||'مورد');}
   return v.partyName||'حساب آخر';
 }
-const APP_BUILD='يومية-جديدة · 20/06 #82';
+const APP_BUILD='يومية-جديدة · 20/06 #84';
 let jrnDay=null,jrnBox='',jrnQ='';
 function journalEntries(day,boxId){
   const E=[];const sameDay=d=>(d||'').slice(0,10)===day;
@@ -4971,7 +5009,7 @@ function renderOrders(list){
   if(!list.length){el.innerHTML=`<div class="empty" style="padding:30px">${svg(I.store,38)}<b>لا طلبات${_ordFilter!=='all'?' في هذه الحالة':' بعد'}</b>ستظهر هنا طلبات الزبائن من المتجر</div>`;return;}
   el.innerHTML=list.map(o=>{
     const st=o.status||'pending';const stg=orderStage(o);const isCancel=st==='rejected';
-    const payTxt=o.payMode==='cod'?'عند الاستلام':o.payMode==='partial'?('جزئي عبر '+esc(o.payApp||'')+' — مدفوع '+money(o.deposit)+' / باقٍ '+money(o.remaining)):('كامل عبر '+esc(o.payApp||'')+' — '+money(o.deposit));
+    const payTxt=o.payMode==='balance'?('من الرصيد: '+money(o.fromBalance||0)+(o.remaining>0?(' · يُحصَّل عند التسليم: '+money(o.remaining)):' (مغطّى بالكامل)')):o.payMode==='cod'?'عند الاستلام':o.payMode==='partial'?('جزئي عبر '+esc(o.payApp||'')+' — مدفوع '+money(o.deposit)+' / باقٍ '+money(o.remaining)):('كامل عبر '+esc(o.payApp||'')+' — '+money(o.deposit));
     const stepPill=(k)=>`<button class="btn btn-sm" style="${st===k?`background:${ORDER_STAGES[k].fg};color:#fff;border-color:${ORDER_STAGES[k].fg}`:''};font-size:11.5px;padding:6px 9px" onclick="setOrderStatus('${o.id}','${k}')">${ORDER_STAGES[k].ic} ${ORDER_STAGES[k].t}</button>`;
     return `<div style="border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px;${st==='delivered'?'opacity:.85':''}${isCancel?'opacity:.7;background:#fef2f2':''}">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap">
@@ -5087,7 +5125,7 @@ function convertOrder(id){
       const earnBase=Math.max(0,goodsTotal-ptsDisc);
       const earned=loyEarn(o.customerId,earnBase,'كسب من طلب #'+o.no);
       if(earned>0)toast('مُنح الزبون '+earned+' '+loyName(),'ok');
-      custTxn(o.customerId,'طلبك #'+o.no+' أصبح فاتورة بمبلغ '+m(total)+(earned?(' · +'+earned+' '+loyName()):''));
+      custTxn(o.customerId,'طلبك #'+o.no+' أصبح فاتورة بمبلغ '+m(total)+(o.fromBalance>0?(' · خُصم من رصيدك '+m(Math.min(o.fromBalance,total))):'')+(earned?(' · +'+earned+' '+loyName()):''));
     }
     if(cust)syncCustToReg(cust);
     save();updateOrderBadge();toast('تم تحويل الطلب إلى فاتورة #'+no,'ok');
@@ -6526,6 +6564,9 @@ function clrPayPts(){_payPts=0;renderPaymentStep(window._coCtx);}
 function renderPaymentStep(ctx){
   const apps=payApps();const appBox=apps.find(b=>b.id===_payApp);
   const disc=_payPts*loyRedeemVal();const effTotal=Math.max(0,ctx.grandTotal-disc);
+  const creditAvail=Math.max(0,-(Number(window._myBalance)||0));
+  if(_payMode==='balance'&&creditAvail<=0)_payMode='cod';
+  const balUse=Math.min(creditAvail,effTotal);const balRemain=Math.max(0,effTotal-balUse);
   const usable=loyUsable(ctx);
   const loyBox=(loyOn()&&usable>0)?`
     <div style="border:1px solid var(--primary);border-radius:14px;padding:11px 13px;margin-bottom:12px;background:var(--primary-soft)">
@@ -6550,9 +6591,16 @@ function renderPaymentStep(ctx){
       </div>
     </div>`+loyBox;
   const tabBtn=(mm,lbl)=>`<button class="btn ${_payMode===mm?'btn-primary':''}" style="flex:1;justify-content:center;font-size:12px;padding:9px 4px" onclick="setPayMode('${mm}')">${lbl}</button>`;
-  const tabs=`<div style="display:flex;gap:6px;margin-bottom:12px">${tabBtn('cod','عند الاستلام')}${tabBtn('full','دفع كامل')}${tabBtn('partial','جزء + الباقي')}</div>`;
+  const tabs=`<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">${creditAvail>0?tabBtn('balance','💳 من رصيدي'):''}${tabBtn('cod','عند الاستلام')}${tabBtn('full','دفع كامل')}${tabBtn('partial','جزء + الباقي')}</div>`;
   let pane='';
-  if(_payMode==='cod'){
+  if(_payMode==='balance'){
+    pane=`<div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:14px;padding:14px;color:#1E3A8A">
+      <div style="font-weight:800;font-size:14px">💳 الدفع من رصيدك</div>
+      <div style="font-size:12.5px;margin-top:6px">رصيدك المتاح: <b>${money(creditAvail)} ${CUR()}</b></div>
+      <div style="display:flex;justify-content:space-between;margin-top:10px;font-size:13px"><span>يُخصم من رصيدك</span><b style="color:#15803D">${money(balUse)} ${CUR()}</b></div>
+      ${balRemain>0?`<div style="display:flex;justify-content:space-between;margin-top:4px;font-size:13px"><span>يُدفع نقداً عند الاستلام</span><b>${money(balRemain)} ${CUR()}</b></div><div class="muted" style="font-size:11.5px;margin-top:8px">رصيدك لا يكفي كامل الطلب — الباقي يُدفع عند الاستلام.</div>`:`<div style="font-size:12.5px;color:#15803D;font-weight:700;margin-top:8px">✓ الطلب مغطّى بالكامل من رصيدك — لا حاجة لدفع شيء.</div>`}
+    </div>`;
+  }else if(_payMode==='cod'){
     pane=`<div style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:14px;padding:14px;text-align:center;color:#14532D">
       <div style="font-size:28px">💵</div><div style="font-weight:800;margin-top:4px">الدفع نقداً عند الاستلام</div>
       <div style="font-size:12.5px;margin-top:5px">ستدفع ${money(effTotal)} ${CUR()} عند استلام طلبك.</div></div>`;
@@ -6579,8 +6627,12 @@ function submitOrder(ctx){
   if(window._acctBlocked){toast('حسابك محظور بسبب معلومات غير صحيحة متكرّرة — لا يمكنك إرسال طلبات. تواصل مع المتجر.','err');return false;}
   const ptsUsed=Math.max(0,Math.min(_payPts|0,loyUsable(ctx)));const ptsDisc=ptsUsed*loyRedeemVal();
   const effTotal=Math.max(0,ctx.grandTotal-ptsDisc);
-  let payMode=_payMode,deposit=0,appBox=null,payNum='';
-  if(payMode!=='cod'){
+  let payMode=_payMode,deposit=0,appBox=null,payNum='',fromBalance=0;
+  if(payMode==='balance'){
+    const creditAvail=Math.max(0,-(Number(window._myBalance)||0));
+    fromBalance=Math.min(creditAvail,effTotal);
+    if(fromBalance<=0){toast('لا يوجد رصيد متاح للدفع','err');return false;}
+  }else if(payMode!=='cod'){
     appBox=payApps().find(b=>b.id===_payApp);
     if(!appBox){toast('اختر تطبيق الدفع','err');return false;}
     if(!_payProof){toast('يجب إرفاق صورة إثبات الدفع قبل إكمال الطلب','err');return false;}
@@ -6594,8 +6646,8 @@ function submitOrder(ctx){
   const o={id:uid('ord'),no,date:new Date().toISOString(),
     customerId:v.id||regKey(ctx.cc,ctx.phone),name:ctx.name,cc:ctx.cc,phone:ctx.phone,addr:ctx.addr||'',coords:ctx.coords||null,note:ctx.note||'',
     items:CART.map(l=>({id:l.id,name:l.name,price:l.price,qty:l.qty})),
-    itemsTotal:ctx.itemsTotal,delivery:ctx.delivery,pointsUsed:ptsUsed,pointsDiscount:ptsDisc,total:effTotal,
-    payMode,payApp:appBox?appBox.name:'',payAppId:appBox?appBox.id:'',payNum,deposit,remaining:effTotal-deposit,
+    itemsTotal:ctx.itemsTotal,delivery:ctx.delivery,pointsUsed:ptsUsed,pointsDiscount:ptsDisc,total:effTotal,fromBalance,
+    payMode,payApp:appBox?appBox.name:'',payAppId:appBox?appBox.id:'',payNum,deposit,remaining:payMode==='balance'?(effTotal-fromBalance):(effTotal-deposit),
     proof:_payProof||'',voice:ctx.voice||_voiceNote||'',status:'pending'};
   DB.orders=DB.orders||[];DB.orders.push(o);save();
   cloudAddOrder(o).catch(()=>{});
@@ -6628,7 +6680,7 @@ function renderMyOrders(){
       ${(o.status||'pending')!=='rejected'?`<div style="display:flex;align-items:flex-start;margin:6px 0 12px">${bar}</div>`:''}
       <div style="font-size:12.5px">${o.items.map(l=>`${esc(l.name)} ×${l.qty}`).join(' · ')}</div>
       <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:13px"><span class="muted">الحمل: ${money(o.delivery)}</span><b>الإجمالي: ${money(o.total)} ${CUR()}</b></div>
-      ${o.payMode!=='cod'?`<div class="muted" style="font-size:11.5px;margin-top:4px">مدفوع: ${money(o.deposit)}${o.remaining>0?` · الباقي عند الاستلام: ${money(o.remaining)}`:''}</div>`:`<div class="muted" style="font-size:11.5px;margin-top:4px">الدفع عند الاستلام</div>`}
+      ${o.payMode==='balance'?`<div class="muted" style="font-size:11.5px;margin-top:4px">مدفوع من رصيدك: ${money(o.fromBalance||0)}${o.remaining>0?` · الباقي عند الاستلام: ${money(o.remaining)}`:' (مغطّى بالكامل)'}</div>`:(o.payMode!=='cod'?`<div class="muted" style="font-size:11.5px;margin-top:4px">مدفوع: ${money(o.deposit)}${o.remaining>0?` · الباقي عند الاستلام: ${money(o.remaining)}`:''}</div>`:`<div class="muted" style="font-size:11.5px;margin-top:4px">الدفع عند الاستلام</div>`)}
       ${o.voice?`<div style="margin-top:8px"><div class="muted" style="font-size:11px;margin-bottom:3px">🎙 رسالتك الصوتية:</div><audio controls src="${o.voice}" style="width:100%;height:34px"></audio></div>`:''}
       ${o.invoiceImg?`<div style="margin-top:10px"><div class="muted" style="font-size:11px;margin-bottom:4px">🧾 فاتورتك:</div><img src="${o.invoiceImg}" style="width:100%;border:1px solid var(--line);border-radius:10px" alt="الفاتورة"><a class="btn btn-sm" href="${o.invoiceImg}" download="فاتورة-${o.no}.jpg" style="margin-top:6px;justify-content:center;width:100%">⬇ حفظ صورة الفاتورة</a></div>`:''}
       ${(o.status||'pending')==='pending'?`<button class="btn btn-sm" style="margin-top:10px;width:100%;justify-content:center;color:#b91c1c;border-color:#fecaca" onclick="cancelMyOrder('${o.id}')">إلغاء الطلب</button>`:((o.status||'pending')==='delivering'?`<div class="muted" style="font-size:11px;margin-top:9px;text-align:center">🚚 طلبك في الطريق — لم يعد بالإمكان إلغاؤه</div>`:'')}
@@ -6720,6 +6772,7 @@ function openStoreMenu(){
         <span class="micon" style="background:#DCFCE7;color:#15803D"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5M15 12H3"/></svg></span></button>`;
     el.innerHTML=(reg?'':acc)+stmt+auth;
   }
+  const adm=document.getElementById('menuAdminBtn');if(adm){const v2=getVisitor();adm.style.display=(v2&&(v2.id||v2.phone))?'none':'';}
   document.body.classList.add('menu-open');
   document.getElementById('storeMenu').classList.add('open');
 }
@@ -6948,6 +7001,7 @@ function watchAccount(){
     const reg=d&&d.exists?d.data():null;if(!reg)return;
     if(reg.deleted){accountDeletedCleanup();return;}
     window._acctBlocked=!!reg.blocked;window._fraudStrikes=Number(reg.fraudStrikes)||0;
+    if(reg.balance!=null)window._myBalance=Number(reg.balance)||0;
     if(reg.points!=null){_myPoints=Number(reg.points)||0;const el=document.getElementById('myLoyPts');if(el)el.textContent=money(_myPoints);}
     if(reg.lastTxn&&reg.lastTxn.id){const seen=localStorage.getItem('sadaqa_seen_txn')||'';
       if(reg.lastTxn.id!==seen){localStorage.setItem('sadaqa_seen_txn',reg.lastTxn.id);
@@ -7101,6 +7155,10 @@ function renderMyStmt(v,entries,bal,loading){
   const openRow=`<tr style="background:var(--surface-2,#f1f5f9)"><td style="${cell};text-align:center" class="muted">—</td><td style="${cell};text-align:start;font-weight:700">رصيد افتتاحي</td><td style="${cell};text-align:center">—</td><td style="${cell};text-align:center">—</td><td style="${cell};text-align:center"><b>${money(opening)}</b></td></tr>`;
   const curRow=`<tr style="background:var(--primary-soft)"><td style="${cell}"></td><td style="${cell};text-align:start;font-weight:800">الرصيد الحالي</td><td style="${cell}"></td><td style="${cell}"></td><td style="${cell};text-align:center"><b style="color:${bal>0?'var(--danger)':bal<0?'var(--success)':'inherit'}">${money(bal)}</b></td></tr>`;
   const body=`<div id="myStmt" dir="rtl">
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <button class="btn" style="flex:1;justify-content:center;background:#16a34a;color:#fff;border:0;font-weight:800;padding:12px" onclick="closeModal();setTimeout(function(){payDebtSheet(${bal>0?bal:0})},160)">➕ إضافة رصيد</button>
+      <button class="btn" style="flex:1;justify-content:center;background:#dc2626;color:#fff;border:0;font-weight:800;padding:12px" onclick="closeModal();setTimeout(function(){payWithdrawSheet(${bal<0?-bal:0})},160)">➖ سحب رصيد</button>
+    </div>
     <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px">
       <div><b style="font-size:15px">${esc(v.name)}</b><div class="muted" style="font-size:12px" dir="ltr">+${esc(v.cc||'222')} ${esc(v.phone||'')}</div></div>
       <div style="text-align:end"><div class="muted" style="font-size:11px">الرصيد النهائي</div><b style="font-size:16px;color:${bal>0?'var(--danger)':bal<0?'var(--success)':'inherit'}">${bal>0?'عليك: '+m(bal):bal<0?'لك (دائن): '+m(-bal):'مُسوّى ✔'}</b></div>
@@ -7116,7 +7174,7 @@ function renderMyStmt(v,entries,bal,loading){
     </table>
     ${loading?'<p class="muted" style="font-size:11.5px;margin-top:8px;text-align:center">⏳ يتم تحديث الكشف من المتجر...</p>':(!entries.length?'<p class="muted" style="font-size:12px;margin-top:8px;text-align:center">لا توجد حركات بعد على حسابك.</p>':'')}
     <p class="muted" style="font-size:11px;margin-top:8px">للاستفسار عن حسابك تواصل معنا عبر واتساب.</p></div>`;
-  modal({title:'كشف حسابي',size:'lg',body,actions:[{label:'تسديد / دفع',primary:true,icon:I.wallet||I.check,fn:()=>{closeModal();setTimeout(()=>payDebtSheet(bal>0?bal:0),150);return false;}},{label:'طباعة',icon:I.print,fn:()=>{printEl('myStmt');return false;}},{label:'إغلاق',fn:()=>true}]});
+  modal({title:'كشف حسابي',size:'lg',body,actions:[{label:'طباعة',icon:I.print,fn:()=>{printEl('myStmt');return false;}},{label:'إغلاق',primary:true,fn:()=>true}]});
 }
 function openMyAccountFull(){
   const v=getVisitor();
@@ -7144,8 +7202,8 @@ function openAccountSheet(){
         ?`<button class="btn" style="justify-content:center;color:var(--danger)" onclick="closeModal();customerLogout()">تسجيل الخروج</button>`
         :`<button class="btn" style="justify-content:center" onclick="closeModal();customerLogin()">تسجيل الدخول بحساب موجود</button>`}
       <button class="btn btn-ghost" style="justify-content:center" onclick="closeModal();openStoreMenu()">المزيد من الخيارات</button>
-      <div style="border-top:1px solid var(--line);margin:4px 0 2px"></div>
-      <button class="btn" style="justify-content:center" onclick="closeModal();adminLogin()">${svg(I.lock||I.user||I.people,15)} دخول كمدير / موظّف</button>
+      ${reg?'':`<div style="border-top:1px solid var(--line);margin:4px 0 2px"></div>
+      <button class="btn" style="justify-content:center" onclick="closeModal();adminLogin()">${svg(I.lock||I.user||I.people,15)} دخول كمدير / موظّف</button>`}
     </div>`,
     actions:[{label:t('close'),fn:()=>true}]});
   if(reg&&loyOn()){try{const pr=cloudGetReg(v.id);if(pr&&pr.then)pr.then(rg=>{if(rg&&rg.points!=null){_myPoints=Number(rg.points)||0;const el=document.getElementById('myLoyPts');if(el)el.textContent=money(_myPoints);}}).catch(()=>{});}catch(e){}}
