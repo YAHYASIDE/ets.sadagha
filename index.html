@@ -3894,22 +3894,47 @@ function collectPayment(id){
 let _cpProof=null,_cpApp='',_cpProofs=[];
 function payDebtSheet(prefill){
   const v=getVisitor();if(!v||!v.id){toast('سجّل حسابك أولاً','err');visitorRegister();return;}
-  _cpProof=null;_cpApp='';_cpProofs=[];
+  if(window._acctBlocked){toast('حسابك محظور — تواصل مع المتجر.','err');return;}
+  _cpProof=null;_cpApp='';_cpProofs=[];window._cpMode='cash';
   const apps=(typeof payApps==='function')?payApps():[];
-  modal({title:'تسديد / دفع',size:'sm',body:`
-    <p class="muted" style="font-size:12.5px;margin-bottom:10px">ادفع المبلغ المستحق عليك (أو أضِف رصيداً لحسابك) عبر أحد تطبيقات الدفع، ثم أرسِل صورة إثبات الدفع ليؤكّدها المتجر ويُحدّث رصيدك.</p>
+  const bal=Number(window._myBalance)||0;const cred=bal<0,owe=bal>0;
+  modal({title:'تسديد / إيداع',size:'sm',body:`
+    <div style="background:linear-gradient(135deg,#4f46e5,#3730a3);color:#fff;border-radius:16px;padding:16px;text-align:center;margin-bottom:14px">
+      <div style="font-size:12.5px;opacity:.92;font-weight:700">${owe?'المبلغ المستحقّ عليك':cred?'رصيدك الحالي (دائن)':'رصيدك'}</div>
+      <div style="font-size:28px;font-weight:800;margin:3px 0">${money(Math.abs(bal))} <span style="font-size:13px">${CUR()}</span></div>
+      <div style="font-size:12px;font-weight:700;opacity:.95">${owe?'سدِّد لتصفية حسابك':cred?'لك رصيد دائن':'مُسوّى'}</div>
+    </div>
     <div class="field"><label>المبلغ (${CUR()})</label><input class="inp" id="cp_amt" type="number" inputmode="numeric" placeholder="المبلغ" value="${prefill>0?prefill:''}"></div>
-    ${apps.length?`<div class="field" style="margin-top:10px"><label>تطبيق الدفع</label>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
-        ${apps.map(a=>`<button type="button" class="btn" id="cpapp_${a.id}" style="justify-content:center;font-size:12px;padding:9px 4px" onclick="cpSelApp('${a.id}')">${esc(a.name)}</button>`).join('')}
-      </div><div id="cp_paynum" class="muted" style="font-size:12px;margin-top:8px"></div></div>`:`<div class="muted" style="font-size:12px;margin-top:8px">رقم الدفع: <b dir="ltr">${esc(DB.settings.payNumber||DB.settings.whatsapp||'')}</b></div>`}
-    <div class="field" style="margin-top:10px"><label>صور إثبات الدفع (يمكن إضافة عدّة صور)</label>
-      <input type="file" id="cp_file" accept="image/*" multiple onchange="cpPickProof(this)">
-      <div id="cp_proofPrev" style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px"></div></div>
+    <div class="field" style="margin-top:12px"><label>طريقة الدفع</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px">
+        <button type="button" class="btn btn-primary" id="cpm_cash" style="justify-content:center;padding:13px;font-weight:800;font-size:13.5px" onclick="cpSetMode('cash')">💵 نقداً</button>
+        <button type="button" class="btn" id="cpm_app" style="justify-content:center;padding:13px;font-weight:800;font-size:13.5px" onclick="cpSetMode('app')">🏦 تطبيق بنكي</button>
+      </div>
+      <div id="cp_cashHint" class="muted" style="font-size:11px;margin-top:8px">«نقداً» = تأتي إلى المتجر وتدفع المبلغ في الصندوق.</div>
+      <div id="cp_appBox" style="display:none;margin-top:10px">
+        <div class="muted" style="font-size:11.5px;margin-bottom:6px">اختر التطبيق الذي حوّلت منه:</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+          ${apps.length?apps.map(a=>`<button type="button" class="btn" id="cpapp_${a.id}" style="justify-content:center;font-size:12px;padding:9px 4px" onclick="cpSelApp('${a.id}')">${esc(a.name)}</button>`).join(''):'<div class="muted" style="font-size:12px;grid-column:1/-1">لا تطبيقات مضبوطة</div>'}
+        </div>
+        <div id="cp_paynum" style="font-size:12.5px;margin-top:10px;text-align:center"></div>
+        <div class="field" style="margin-top:10px"><label>الرقم الذي دفعت منه</label><input class="inp" id="cp_phone" type="tel" inputmode="tel" dir="ltr" placeholder="رقمك الذي حوّلت منه" value="${esc((getVisitor()||{}).phone||'')}"></div>
+        <div class="field" style="margin-top:10px"><label>صور إثبات الدفع (يمكن إضافة عدّة صور)</label>
+          <input type="file" id="cp_file" accept="image/*" multiple onchange="cpPickProof(this)">
+          <div id="cp_proofPrev" style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px"></div></div>
+      </div>
+    </div>
     <div class="field" style="margin-top:10px"><label>ملاحظة (اختياري)</label><input class="inp" id="cp_note" placeholder="مثال: تسديد فاتورة"></div>`,
     actions:[{label:'إرسال الدفعة',primary:true,icon:I.check,fn:()=>submitCustPayment()},{label:'إلغاء',fn:()=>true}]});
 }
-function cpSelApp(id){_cpApp=id;(payApps()||[]).forEach(a=>{const el=document.getElementById('cpapp_'+a.id);if(el)el.className='btn'+(a.id===id?' btn-primary':'');});const b=boxes().find(x=>x.id===id);const pn=document.getElementById('cp_paynum');if(pn)pn.innerHTML=(b&&(b.payNum||DB.settings.payNumber))?('حوّل إلى الرقم: <b dir="ltr">'+esc(b.payNum||DB.settings.payNumber)+'</b>'):'';}
+function cpSetMode(mode){window._cpMode=mode;
+  const cb=document.getElementById('cpm_cash'),ab=document.getElementById('cpm_app'),box=document.getElementById('cp_appBox'),hint=document.getElementById('cp_cashHint');
+  if(cb)cb.className='btn'+(mode==='cash'?' btn-primary':'');
+  if(ab)ab.className='btn'+(mode==='app'?' btn-primary':'');
+  if(box)box.style.display=(mode==='app')?'block':'none';
+  if(hint)hint.style.display=(mode==='cash')?'block':'none';
+  if(mode==='cash')_cpApp='';
+}
+function cpSelApp(id){_cpApp=id;window._cpMode='app';(payApps()||[]).forEach(a=>{const el=document.getElementById('cpapp_'+a.id);if(el)el.className='btn'+(a.id===id?' btn-primary':'');});const b=boxes().find(x=>x.id===id);const pn=document.getElementById('cp_paynum');if(pn)pn.innerHTML=(b&&(b.payNum||DB.settings.payNumber))?('حوّل المبلغ إلى الرقم: <b dir="ltr" style="font-size:16px;color:var(--primary-d)">'+esc(b.payNum||DB.settings.payNumber)+'</b>'):'';}
 function payWithdrawSheet(prefill){
   const v=getVisitor();if(!v||!v.id){toast('سجّل حسابك أولاً','err');visitorRegister();return;}
   if(window._acctBlocked){toast('حسابك محظور — تواصل مع المتجر.','err');return;}
@@ -3974,13 +3999,17 @@ function submitCustPayment(){
   if(window._acctBlocked){toast('حسابك محظور — تواصل مع المتجر.','err');return false;}
   const v=getVisitor()||{};const amt=parseFloat(val('cp_amt'))||0;
   if(amt<=0){toast('أدخل مبلغاً صحيحاً','err');return false;}
-  if(!_cpProofs.length){toast('أرفق صورة إثبات الدفع','err');return false;}
-  const appBox=boxes().find(b=>b.id===_cpApp);
-  const p={id:uid('cpr'),customerId:v.id,name:v.name||'',cc:v.cc||'222',phone:v.phone||'',amount:amt,
-    app:appBox?appBox.name:'',box:_cpApp||'',proof:_cpProofs[0]||'',proofs:_cpProofs.slice(),note:(val('cp_note')||'').trim(),date:new Date().toISOString(),status:'pending'};
+  const isCash=(window._cpMode!=='app');
+  if(!isCash){if(!_cpApp){toast('اختر تطبيق الدفع','err');return false;}if(!_cpProofs.length){toast('أرفق صورة إثبات الدفع','err');return false;}}
+  const appBox=isCash?null:boxes().find(b=>b.id===_cpApp);
+  const fromPhone=isCash?'':(val('cp_phone')||'').trim();
+  const _note=(val('cp_note')||'').trim();
+  const fullNote=(fromPhone?('مدفوع من: '+fromPhone):'')+(fromPhone&&_note?' · ':'')+_note;
+  const p={id:uid('cpr'),customerId:v.id,name:v.name||'',cc:v.cc||'222',phone:v.phone||'',fromPhone:fromPhone,amount:amt,
+    app:isCash?'نقداً (في المتجر)':(appBox?appBox.name:''),box:isCash?'':(_cpApp||''),method:isCash?'cash':'app',proof:isCash?'':(_cpProofs[0]||''),proofs:isCash?[]:_cpProofs.slice(),note:fullNote,date:new Date().toISOString(),status:'pending'};
   cloudAddCustPayment(p).then(()=>{}).catch(()=>{});
   closeModal();
-  try{showInAppNotif('✅ تم إرسال دفعتك','سيؤكّد المتجر استلام المبلغ ثم يُحدّث رصيدك.','statement');}catch(e){}
+  try{showInAppNotif('✅ تم إرسال دفعتك',isCash?'تعال إلى المتجر وادفع نقداً؛ سيؤكّد المتجر ويُحدّث رصيدك.':'سيؤكّد المتجر استلام المبلغ ثم يُحدّث رصيدك.','statement');}catch(e){}
   toast('أُرسلت الدفعة — بانتظار تأكيد المتجر','ok');return false;
 }
 function pendingCustPays(){return (window._custPayReqs||[]).filter(p=>p&&(p.status||'pending')==='pending');}
@@ -4071,7 +4100,7 @@ function vchPartyName(v){
   if(v.partyType==='supplier'){const s=DB.suppliers.find(x=>x.id===v.partyId);return s?s.name:(v.partyName||'مورد');}
   return v.partyName||'حساب آخر';
 }
-const APP_BUILD='يومية-جديدة · 20/06 #133';
+const APP_BUILD='يومية-جديدة · 20/06 #136';
 let jrnDay=null,jrnBox='',jrnQ='';
 function journalEntries(day,boxId){
   const E=[];const sameDay=d=>(d||'').slice(0,10)===day;
@@ -7729,13 +7758,16 @@ function visitorRegister(){
         <input class="inp" id="vrPhone" inputmode="numeric" placeholder="رقم الهاتف" value="${esc(v.phone||'')}" style="flex:1">
       </div>
     </div>
+    <div class="field" style="margin-top:10px"><label>كلمة السرّ (لحماية حسابك عند الدخول)</label><input class="inp" id="vrPass" type="password" placeholder="اختر كلمة سرّ (4 خانات فأكثر)" autocomplete="new-password"></div>
     <p class="muted" style="font-size:11.5px;margin-top:10px">${done?'يمكنك تحديث بياناتك هنا.':'بعد التسجيل يراجع المتجر حسابك ويُفعّله، ويصلك إشعار.'} يصبح حسابك «موثّقاً ✔» بعد أن يؤكّده المتجر.${!done?'<br><a onclick="closeModal();customerLogin()" style="color:var(--primary);font-weight:700;cursor:pointer">لديك حساب؟ تسجيل الدخول</a>':''}</p>`,
     actions:[
       {label:done?'حفظ التعديلات':'تسجيل الحساب',primary:true,icon:I.check,fn:()=>{
         const name=(val('vrName')||'').trim(); const cc=val('vrCc')||'222'; const phone=digitsOnly(val('vrPhone'));
+        const pass=(val('vrPass')||'').trim();
         if(name.length<3){toast('أدخل الاسم الكامل','err');return false;}
         if(cc==='222'){if(phone.length!==8){toast('رقم الهاتف الموريتاني يجب أن يكون 8 أرقام','err');return false;}}
         else if(phone.length<6){toast('أدخل رقم هاتف صحيح','err');return false;}
+        if(pass.length<4){toast('اختر كلمة سرّ من 4 خانات على الأقل','err');return false;}
         const id=regKey(cc,phone);
         const ownSame=(v&&v.id===id); // نفس حساب هذا الجهاز
         const finishSave=(wasDeleted)=>{
@@ -7746,7 +7778,7 @@ function visitorRegister(){
             _myPoints=null;
           }
           const verified=(v.phone===phone&&v.verified&&!wasDeleted)?true:false;
-          const reg={id,name,cc,phone,verified,date:new Date().toISOString(),source:'store',image:_vrImg||'',deleted:false,balance:0,points:0,statement:[]};
+          const reg={id,name,cc,phone,verified,date:new Date().toISOString(),source:'store',image:_vrImg||'',deleted:false,balance:0,points:0,statement:[],passHash:otpHash(id+':pass:'+pass)};
           try{const ref=localStorage.getItem('sadaqa_ref')||'';if(ref&&ref!==id&&!(v&&v.verified))reg.referrer=ref;}catch(e){}
           setVisitor({id,name,cc,phone,verified,image:_vrImg||''});
           cloudAddRegistration(reg).catch(()=>{});
@@ -7840,6 +7872,22 @@ function showStmtInvoice(ix){
     </div>${img}</div>`;
   modal({title:'تفاصيل الفاتورة',size:'lg',body,actions:[{label:'طباعة',icon:I.print,fn:()=>{printEl('stmtInv');return false;}},{label:'رجوع للكشف',primary:true,fn:()=>{closeModal();setTimeout(()=>renderMyStmt(window._stmtV,window._stmtEntries,window._stmtBal,false),130);return false;}}]});
 }
+function stmtKind(e){
+  const L=String((e&&e.label)||'');
+  if(/سحب|صرف/.test(L))return 'withdraw';
+  if(/مرتجع|استرد/.test(L))return 'refund';
+  if(/دفعة|إيداع|قبض|سدّد|سدد/.test(L))return 'deposit';
+  if(/طلب|فاتورة|مشتر|بيع/.test(L))return 'order';
+  return (Number(e&&e.credit)||0)>0?'deposit':'order';
+}
+function myStmtApplyFilter(){
+  const ty=(document.getElementById('myStmtType')||{}).value||'all';
+  const q=((document.getElementById('myStmtSearch')||{}).value||'').trim().toLowerCase();
+  const rows=document.querySelectorAll('#myStmt tr[data-row="mv"]');let shown=0;
+  rows.forEach(r=>{const k=r.getAttribute('data-kind')||'';const txt=r.getAttribute('data-text')||'';
+    const ok=(ty==='all'||k===ty)&&(!q||txt.indexOf(q)>=0);r.style.display=ok?'':'none';if(ok)shown++;});
+  const ne=document.getElementById('myStmtNoRes');if(ne)ne.style.display=(rows.length&&!shown)?'':'none';
+}
 function renderMyStmt(v,entries,bal,loading){
   const cell='padding:8px 10px;border:1px solid var(--line)';
   entries=(entries||[]).slice().sort((a,b)=>new Date(a.date)-new Date(b.date));
@@ -7850,7 +7898,7 @@ function renderMyStmt(v,entries,bal,loading){
   const net=entries.reduce((a,e)=>a+((Number(e.debit)||0)-(Number(e.credit)||0)),0);
   const opening=bal-net;
   let run=opening;
-  const movesRows=entries.map((e,ix)=>{run+=((Number(e.debit)||0)-(Number(e.credit)||0));const clk=(e.ref==='inv'&&e.items&&e.items.length);return `<tr ${clk?`onclick="showStmtInvoice(${ix})" style="cursor:pointer"`:''}><td style="${cell};text-align:center" class="muted">${fmtDate(e.date)}</td><td style="${cell};text-align:start">${esc(e.label||'')}${clk?' <span style="color:var(--primary);font-weight:700;display:inline-flex;align-items:center;gap:3px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>عرض</span>':''}</td><td style="${cell};text-align:center">${e.debit?money(e.debit):'—'}</td><td style="${cell};text-align:center">${e.credit?money(e.credit):'—'}</td><td style="${cell};text-align:center"><b style="color:${run>0?'var(--danger)':run<0?'var(--success)':'inherit'}">${money(run)}</b></td></tr>`;}).join('');
+  const movesRows=entries.map((e,ix)=>{run+=((Number(e.debit)||0)-(Number(e.credit)||0));const clk=(e.ref==='inv'&&e.items&&e.items.length);const _k=stmtKind(e);const _tx=esc(String(e.label||'').toLowerCase());return `<tr data-row="mv" data-kind="${_k}" data-text="${_tx}" ${clk?`onclick="showStmtInvoice(${ix})" style="cursor:pointer"`:''}><td style="${cell};text-align:center" class="muted">${fmtDate(e.date)}</td><td style="${cell};text-align:start">${esc(e.label||'')}${clk?' <span style="color:var(--primary);font-weight:700;display:inline-flex;align-items:center;gap:3px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>عرض</span>':''}</td><td style="${cell};text-align:center">${e.debit?money(e.debit):'—'}</td><td style="${cell};text-align:center">${e.credit?money(e.credit):'—'}</td><td style="${cell};text-align:center"><b style="color:${run>0?'var(--danger)':run<0?'var(--success)':'inherit'}">${money(run)}</b></td></tr>`;}).join('');
   const openRow=`<tr style="background:var(--surface-2,#f1f5f9)"><td style="${cell};text-align:center" class="muted">—</td><td style="${cell};text-align:start;font-weight:700">رصيد افتتاحي</td><td style="${cell};text-align:center">—</td><td style="${cell};text-align:center">—</td><td style="${cell};text-align:center"><b>${money(opening)}</b></td></tr>`;
   const curRow=`<tr style="background:var(--primary-soft)"><td style="${cell}"></td><td style="${cell};text-align:start;font-weight:800">الرصيد الحالي</td><td style="${cell}"></td><td style="${cell}"></td><td style="${cell};text-align:center"><b style="color:${bal>0?'var(--danger)':bal<0?'var(--success)':'inherit'}">${money(bal)}</b></td></tr>`;
   const body=`<div id="myStmt" dir="rtl">
@@ -7867,9 +7915,19 @@ function renderMyStmt(v,entries,bal,loading){
       <div class="card stat"><span class="label">المسدّد</span><div class="val t-num" style="font-size:16px;color:var(--success)">${money(totPaid)}</div></div>
       <div class="card stat"><span class="label">المتبقّي عليك</span><div class="val t-num" style="font-size:16px;color:var(--danger)">${money(bal>0?bal:0)}</div></div>
     </div>
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <select class="inp" id="myStmtType" style="flex:1;font-size:12.5px" onchange="myStmtApplyFilter()">
+        <option value="all">كل الأنواع</option>
+        <option value="order">طلبات ومشتريات</option>
+        <option value="deposit">دفعات وإيداعات</option>
+        <option value="withdraw">سحوبات</option>
+        <option value="refund">مرتجعات</option>
+      </select>
+      <input class="inp" id="myStmtSearch" placeholder="ابحث في المعاملات…" style="flex:1.3;font-size:12.5px" oninput="myStmtApplyFilter()">
+    </div>
     <table style="width:100%;border-collapse:collapse;font-size:13px">
       <thead><tr style="background:var(--surface-2)"><th style="${cell};text-align:center">التاريخ</th><th style="${cell};text-align:start">البيان</th><th style="${cell};text-align:center">مدين (عليك)</th><th style="${cell};text-align:center">دائن (مدفوع)</th><th style="${cell};text-align:center">الرصيد</th></tr></thead>
-      <tbody>${openRow}${movesRows}${curRow}</tbody>
+      <tbody>${openRow}${movesRows}<tr id="myStmtNoRes" style="display:none"><td colspan="5" style="${cell};text-align:center" class="muted">لا نتائج مطابقة للتصفية</td></tr>${curRow}</tbody>
     </table>
     ${loading?'<p class="muted" style="font-size:11.5px;margin-top:8px;text-align:center">⏳ يتم تحديث الكشف من المتجر...</p>':(!entries.length?'<p class="muted" style="font-size:12px;margin-top:8px;text-align:center">لا توجد حركات بعد على حسابك.</p>':'')}
     <p class="muted" style="font-size:11px;margin-top:8px">للاستفسار عن حسابك تواصل معنا عبر واتساب.</p></div>`;
@@ -7985,13 +8043,14 @@ function genLoginCode(){return String(Math.floor(100000+Math.random()*900000));}
 function customerLogin(){
   _liPhone=null;
   modal({title:'تسجيل الدخول',size:'sm',body:`
-    <p class="muted" style="font-size:13px;margin-bottom:12px">أدخل رقم هاتفك المسجّل، وسيصلك <b>رمز تحقّق عبر واتساب</b> من المتجر لتأكيد أنّك صاحب الحساب.</p>
+    <p class="muted" style="font-size:13px;margin-bottom:12px">أدخل رقم هاتفك و<b>كلمة سرّك</b>، ثم سيصلك <b>رمز تحقّق عبر واتساب</b> من المتجر لإكمال الدخول.</p>
     <div class="field"><label>رقم الهاتف</label>
       <div style="display:flex;gap:8px">
         <select class="inp" id="li_cc" style="max-width:155px">${ccOptions('222')}</select>
         <input class="inp" id="li_phone" inputmode="numeric" placeholder="رقم الهاتف" style="flex:1">
       </div>
     </div>
+    <div class="field" style="margin-top:10px"><label>كلمة السرّ</label><input class="inp" id="li_pass" type="password" placeholder="كلمة سرّك" autocomplete="current-password"></div>
     <div id="otpBox" style="display:none;margin-top:12px">
       <div class="field"><label>رمز التحقّق (وصلك عبر واتساب)</label><input class="inp" id="li_otp" inputmode="numeric" placeholder="مثال: 123456"></div>
       <p class="muted" style="font-size:11.5px;margin-top:6px">لم يصلك الرمز؟ <a onclick="requestLoginCode(true)" style="color:var(--primary);font-weight:700;cursor:pointer">إعادة الطلب</a></p>
@@ -8009,6 +8068,8 @@ function requestLoginCode(resend){
   const p=cloudGetReg(id);
   const handle=reg=>{
     if(!reg||!reg.name||reg.deleted){toast('لا يوجد حساب بهذا الرقم — سجّل حساباً جديداً','err');return;}
+    const pass=(val('li_pass')||'').trim();
+    if(reg.passHash){if(!pass){toast('أدخل كلمة السرّ','err');return;}if(otpHash(id+':pass:'+pass)!==reg.passHash){toast('كلمة السرّ غير صحيحة','err');return;}}
     try{cloudSetReg(id,{loginReqAt:Date.now(),loginStatus:'pending',loginName:reg.name});}catch(e){}
     const ob=document.getElementById('otpBox');if(ob)ob.style.display='block';
     const btn=document.getElementById('otpBtn');if(btn){btn.innerHTML=svg(I.check,16)+' تأكيد وتسجيل الدخول';btn.setAttribute('onclick','confirmLoginCode()');}
