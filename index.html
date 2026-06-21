@@ -3936,7 +3936,8 @@ function payWithdrawSheet(prefill){
         </div>
       </div>
       <div class="muted" style="font-size:11px;margin-top:8px">«نقداً» = تأتي إلى المتجر وتستلم المبلغ من الصندوق.</div></div>
-    <div class="field" style="margin-top:10px"><label>ملاحظة / رقم الاستلام (اختياري)</label><input class="inp" id="wd_note" placeholder="مثال: حوّل إلى رقمي ..."></div>`,
+    <div class="field" style="margin-top:10px"><label>رقم هاتف المستلم</label><input class="inp" id="wd_phone" type="tel" inputmode="tel" dir="ltr" placeholder="الرقم الذي تستلم عليه" value="${esc((getVisitor()||{}).phone||'')}"></div>
+    <div class="field" style="margin-top:10px"><label>ملاحظة (اختياري)</label><input class="inp" id="wd_note" placeholder="اكتب ملاحظتك هنا"></div>`,
     actions:[{label:'سحب الأموال',primary:true,icon:I.check,fn:()=>submitCustWithdraw()},{label:'إلغاء',fn:()=>true}]});
 }
 function wdSetMode(mode){window._wdMode=mode;
@@ -3954,8 +3955,10 @@ function submitCustWithdraw(){
   const isCash=(window._wdMode!=='app');
   if(!isCash&&!_cpApp){toast('اختر التطبيق البنكي للاستلام','err');return false;}
   const appBox=isCash?null:boxes().find(b=>b.id===_cpApp);
-  const p={id:uid('cpr'),kind:'withdraw',customerId:v.id,name:v.name||'',cc:v.cc||'222',phone:v.phone||'',amount:amt,
-    app:isCash?'نقداً (من المتجر)':(appBox?appBox.name:''),box:isCash?'':(_cpApp||''),method:isCash?'cash':'app',proof:'',note:(val('wd_note')||'').trim(),date:new Date().toISOString(),status:'pending'};
+  const recv=(val('wd_phone')||'').trim();const _note=(val('wd_note')||'').trim();
+  const fullNote=(recv?('استلام على: '+recv):'')+(recv&&_note?' · ':'')+_note;
+  const p={id:uid('cpr'),kind:'withdraw',customerId:v.id,name:v.name||'',cc:v.cc||'222',phone:v.phone||'',recvPhone:recv,amount:amt,
+    app:isCash?'نقداً (من المتجر)':(appBox?appBox.name:''),box:isCash?'':(_cpApp||''),method:isCash?'cash':'app',proof:'',note:fullNote,date:new Date().toISOString(),status:'pending'};
   cloudAddCustPayment(p).then(()=>{}).catch(()=>{});
   closeModal();
   try{showInAppNotif('✅ تم إرسال طلب السحب',isCash?'تعال إلى المتجر لاستلام المبلغ نقداً بعد موافقة المتجر.':'سيراجع المتجر طلبك ويصرف لك المبلغ.','statement');}catch(e){}
@@ -4068,7 +4071,7 @@ function vchPartyName(v){
   if(v.partyType==='supplier'){const s=DB.suppliers.find(x=>x.id===v.partyId);return s?s.name:(v.partyName||'مورد');}
   return v.partyName||'حساب آخر';
 }
-const APP_BUILD='يومية-جديدة · 20/06 #132';
+const APP_BUILD='يومية-جديدة · 20/06 #133';
 let jrnDay=null,jrnBox='',jrnQ='';
 function journalEntries(day,boxId){
   const E=[];const sameDay=d=>(d||'').slice(0,10)===day;
