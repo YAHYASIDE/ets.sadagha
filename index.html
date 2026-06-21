@@ -3983,7 +3983,7 @@ function vchPartyName(v){
   if(v.partyType==='supplier'){const s=DB.suppliers.find(x=>x.id===v.partyId);return s?s.name:(v.partyName||'مورد');}
   return v.partyName||'حساب آخر';
 }
-const APP_BUILD='يومية-جديدة · 20/06 #122';
+const APP_BUILD='يومية-جديدة · 20/06 #124';
 let jrnDay=null,jrnBox='',jrnQ='';
 function journalEntries(day,boxId){
   const E=[];const sameDay=d=>(d||'').slice(0,10)===day;
@@ -4014,6 +4014,9 @@ function journalEntries(day,boxId){
     E.push({date:v.date,editDate:v.editedAt||'',by:v.createdBy||'',editor:v.editedBy||'',no:v.no,amount:v.amount,cash:v.amount,dir:isR?'in':'out',box:bxid,debit:isR?boxName(bxid):(v.partyName||'حساب'),credit:isR?(v.partyName||'حساب'):boxName(bxid),unpaid:false,kind:'voucher',ref:v.id,st:(isR?'إيصال قبض #':'إيصال دفع #')+v.no+' — '+(v.partyName||'')});});
   (DB.expenses||[]).forEach(x=>{const bxid=defBox();if(!sameDay(x.date)||!inBox(bxid))return;
     E.push({date:x.date,editDate:'',by:'',editor:'',no:'',amount:x.amount,cash:x.amount,dir:'out',box:bxid,debit:'مصروفات ('+x.type+')',credit:boxName(bxid),unpaid:false,kind:'expense',ref:'',st:'مصروف: '+x.type});});
+  (DB.porterPays||[]).forEach(pp=>{const bxid=pp.box||defBox();if(!sameDay(pp.date)||!inBox(bxid))return;
+    const pr=(DB.porters||[]).find(x=>x.id===pp.porterId);
+    E.push({date:pp.date,editDate:'',by:'',editor:'',no:'',amount:pp.amount,cash:Number(pp.amount)||0,dir:'out',box:bxid,debit:'أجور حمل',credit:boxName(bxid),unpaid:false,kind:'porterpay',ref:'',st:'أجور حمل — '+((pr&&pr.name)||'')});});
   // الفواتير المحذوفة تبقى ظاهرة كسجلّ محاسبي (لا تُحتسب في المجاميع)
   (DB.trash||[]).forEach(t=>{const s=t&&t.data;if(!s||!sameDay(s.date))return;const bxid=s.boxId||defBox();
     if(t.kind==='sale'){const isCr=s.type==='credit';const ret=s.type==='return';
@@ -5094,10 +5097,10 @@ function renderOrders(list){
       ${o.note?`<div class="muted" style="font-size:12px;margin-top:5px">ملاحظة: ${esc(o.note)}</div>`:''}
       ${!isCancel?`<div style="margin-top:10px;border-top:1px dashed var(--line);padding-top:8px">
         ${o.porter?`<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:#FEF3C7;border-radius:9px;padding:8px 10px">
-          <div style="font-size:12.5px"><b>🛻 الحمّال: ${esc(o.porter.name)}</b> <span class="muted" dir="ltr">${esc(o.porter.phone||'')}</span><div class="muted" style="font-size:11px">أجرة الحمل المدفوعة له: ${money(o.porter.wage||0)} ${CUR()}${(Number(o.delivery)||0)?(' · الربح: '+money((Number(o.delivery)||0)-(Number(o.porter.wage)||0))+' '+CUR()):''}</div></div>
+          <div style="font-size:12.5px"><b>🛻 الحمّال: ${esc(o.porter.name)}</b> <span class="muted" dir="ltr">${esc(o.porter.phone||'')}</span><div class="muted" style="font-size:11px;margin-top:2px">الحمل على الزبون: <b>${money(Number(o.delivery)||0)}</b> · ندفع للحمّال: <b>${money(o.porter.wage||0)}</b> · ربح الحمل: <b style="color:${((Number(o.delivery)||0)-(Number(o.porter.wage)||0))>=0?'var(--success)':'var(--danger)'}">${money((Number(o.delivery)||0)-(Number(o.porter.wage)||0))}</b> ${CUR()}</div></div>
           <button class="btn btn-sm btn-ghost" onclick="clearPorter('${o.id}')">تغيير</button>
         </div>`:`
-        <div class="muted" style="font-size:11px;font-weight:700;margin-bottom:5px">🛻 تعيين الحمّال / السائق</div>
+        <div class="muted" style="font-size:11px;font-weight:700;margin-bottom:5px">🛻 تعيين الحمّال / السائق ${(Number(o.delivery)||0)?('· الحمل على الزبون: '+money(Number(o.delivery)||0)+' '+CUR()):''}</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
           <input class="inp" id="pr_phone_${o.id}" inputmode="tel" placeholder="رقم الحمّال" list="portersDL" style="width:130px" oninput="porterAutofill('${o.id}')">
           <input class="inp" id="pr_name_${o.id}" placeholder="اسم الحمّال" list="portersNameDL" style="flex:1;min-width:110px" oninput="porterAutofillName('${o.id}')">
@@ -5178,11 +5181,19 @@ function vPorters(v){
 function payPorter(pid){
   const p=(DB.porters||[]).find(x=>x.id===pid);if(!p)return;const due=porterDue(pid);
   if(due<=0){toast('لا مستحقّات','ok');return;}
-  confirmDlg('دفع مستحقّ «'+p.name+'»؟','سيُسجَّل صرف '+m(due)+' من الصندوق وتُصفَّر مستحقّاته.',()=>{
-    DB.porterPays=DB.porterPays||[];DB.porterPays.push({id:uid('pp'),porterId:pid,amount:due,date:new Date().toISOString(),note:'دفع مستحقّ حمل'});
-    try{addCash('out',due,'أجور حمل — '+p.name,'',defBox());}catch(e){}
-    save();render();toast('دُفع '+m(due)+' للحمّال '+p.name,'ok');
-  });
+  const bx=boxes();
+  modal({title:'دفع مستحقّ — '+esc(p.name),size:'sm',body:`
+    <div class="muted" style="font-size:12.5px;margin-bottom:10px">المستحقّ الحالي: <b style="color:var(--danger)">${m(due)}</b></div>
+    <div class="field"><label>المبلغ المدفوع له (${CUR()})</label><input class="inp" id="ppay_amt" type="number" step="any" value="${due}"></div>
+    <div class="field" style="margin-top:10px"><label>الدفع من</label>
+      <select class="inp" id="ppay_box">${bx.map(b=>`<option value="${b.id}" ${b.id===defBox()?'selected':''}>${esc(b.name)} ${(b.type==='app'||b.type==='bank')?'— تطبيق بنكي':'— صندوق'}</option>`).join('')}</select></div>`,
+    actions:[{label:'تسجيل الدفع',primary:true,icon:I.cash,fn:()=>{
+      const amt=parseFloat(val('ppay_amt'))||0;if(amt<=0){toast('أدخل مبلغاً صحيحاً','err');return false;}
+      const box=val('ppay_box')||defBox();
+      DB.porterPays=DB.porterPays||[];DB.porterPays.push({id:uid('pp'),porterId:pid,amount:amt,box,date:new Date().toISOString(),note:'دفع مستحقّ حمل'});
+      try{addCash('out',amt,'أجور حمل — '+p.name,'',box);}catch(e){}
+      save();render();toast('دُفع '+m(amt)+' للحمّال '+p.name+' من '+boxName(box),'ok');return true;
+    }},{label:'إلغاء',fn:()=>true}]});
 }
 function porterStatement(pid){
   const p=(DB.porters||[]).find(x=>x.id===pid);if(!p)return;const jobs=porterJobs(pid).slice().sort((a,b)=>new Date(b.date)-new Date(a.date));
@@ -5263,7 +5274,7 @@ function convertOrder(id){
     const wh='wh_main';
     const items=o.items.map(l=>{const p=DB.products.find(x=>x.id===l.id);const price=Number(l.price)||0,qty=Number(l.qty)||0;
       return {id:l.id,name:l.name,code:p?(p.code||''):'',unit:l.unit||(p?(p.unit||'قطعة'):'قطعة'),factor:Number(l.factor)||1,price,qty,disc:0,total:price*qty,wh,warehouseName:whName(wh),cost:p?(p.wholesale||0):0};});
-    if(o.delivery>0)items.push({id:'svc_deliv',name:'الحمل (توصيل)',unit:'خدمة',price:o.delivery,qty:1,disc:0,total:o.delivery,service:true,wh,warehouseName:whName(wh),cost:0});
+    if(o.delivery>0)items.push({id:'svc_deliv',name:'الحمل (توصيل)',unit:'خدمة',price:o.delivery,qty:1,disc:0,total:o.delivery,service:true,wh,warehouseName:whName(wh),cost:(o.porter?(Number(o.porter.wage)||0):0)});
     const goodsTotal=items.filter(i=>!i.service&&!/حمل|توصيل|livr|transport/i.test(i.name||'')).reduce((a,i)=>a+i.total,0);
     const ptsDisc=Math.max(0,Number(o.pointsDiscount)||0);
     if(ptsDisc>0)items.push({id:'loy_disc',name:'خصم نقاط '+loyName(),unit:'خصم',price:-ptsDisc,qty:1,disc:0,total:-ptsDisc,service:true,wh,warehouseName:whName(wh),cost:0});
@@ -5275,7 +5286,7 @@ function convertOrder(id){
     const type=remaining>0?'credit':'cash';
     const boxId=o.payAppId||defBox();
     if(DB.seq&&!DB.seq.sale)DB.seq.sale=1;const no=DB.seq.sale;DB.seq.sale++;
-    const profit=items.reduce((a,i)=>a+(i.service?0:((i.price-(i.cost||0))*i.qty)),0);
+    const profit=items.reduce((a,i)=>a+((Number(i.price)||0)-(Number(i.cost)||0))*(Number(i.qty)||0),0);
     const sale={id:uid('inv'),no,type,date:new Date().toISOString(),
       customerId:cust?cust.id:'',customerName:cust?cust.name:o.name,warehouseId:wh,warehouseName:whName(wh),boxId,boxName:boxName(boxId),
       items,subtotal,discount:0,total,paid,remaining,profit,balanceBefore:balBefore,balanceAfter:balBefore+(remaining>0?remaining:0),
