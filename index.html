@@ -2618,7 +2618,7 @@ function addServiceModal(){
 function pickService(id){const s=(DB.services||[]).find(x=>x.id===id);if(!s)return;
   cart.push({id:'svc_'+uid('s'),name:s.name,unit:'خدمة',price:Number(s.price)||0,cost:0,qty:1,disc:0,max:1e9,service:true});
   closeModal();invRefresh();toast('أُضيفت الخدمة: '+s.name,'ok');}
-function lineCalc(l){const gross=(Number(l.price)||0)*(Number(l.qty)||0);const disc=Math.min(Number(l.disc)||0,gross);const total=gross-disc;const profit=total-(Number(l.cost)||0)*(Number(l.qty)||0);return{gross,disc,total,profit};}
+function lineCalc(l){const gross=(Number(l.price)||0)*(Number(l.qty)||0);const disc=Math.min(Number(l.disc)||0,gross);const total=gross-disc;const isServ=!!l.service||/حمل|توصيل|livr|transport/i.test(l.name||'');const profit=isServ?0:(total-(Number(l.cost)||0)*(Number(l.qty)||0));return{gross,disc,total,profit};}
 function dayName(iso){const d=['الأحد','الإثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];return d[new Date(iso).getDay()];}
 function vInvoice(v){
   const pur=(invMode==='purchase'||invMode==='preturn');const ret=invMode==='sreturn';
@@ -3983,7 +3983,7 @@ function vchPartyName(v){
   if(v.partyType==='supplier'){const s=DB.suppliers.find(x=>x.id===v.partyId);return s?s.name:(v.partyName||'مورد');}
   return v.partyName||'حساب آخر';
 }
-const APP_BUILD='يومية-جديدة · 20/06 #120';
+const APP_BUILD='يومية-جديدة · 20/06 #122';
 let jrnDay=null,jrnBox='',jrnQ='';
 function journalEntries(day,boxId){
   const E=[];const sameDay=d=>(d||'').slice(0,10)===day;
@@ -5077,7 +5077,7 @@ function renderOrders(list){
   if(_ordFilter&&_ordFilter!=='all')list=list.filter(o=>{const st=o.status||'pending';return _ordFilter==='cancelled'?st==='rejected':st===_ordFilter;});
   const el=document.getElementById('ordersList');if(!el)return;
   if(!list.length){el.innerHTML=`<div class="empty" style="padding:30px">${svg(I.store,38)}<b>لا طلبات${_ordFilter!=='all'?' في هذه الحالة':' بعد'}</b>ستظهر هنا طلبات الزبائن من المتجر</div>`;return;}
-  el.innerHTML=`<datalist id="portersDL">${(DB.porters||[]).map(p=>`<option value="${esc(p.phone||'')}">${esc(p.name||'')}</option>`).join('')}</datalist>`+list.map(o=>{
+  el.innerHTML=`<datalist id="portersDL">${(DB.porters||[]).map(p=>`<option value="${esc(p.phone||'')}">${esc(p.name||'')}</option>`).join('')}</datalist><datalist id="portersNameDL">${(DB.porters||[]).map(p=>`<option value="${esc(p.name||'')}">${esc(p.phone||'')}</option>`).join('')}</datalist>`+list.map(o=>{
     const st=o.status||'pending';const stg=orderStage(o);const isCancel=st==='rejected';
     const payTxt=o.payMode==='balance'?('من الرصيد: '+money(o.fromBalance||0)+(o.remaining>0?(' · يُحصَّل عند التسليم: '+money(o.remaining)):' (مغطّى بالكامل)')):o.payMode==='cod'?'عند الاستلام':o.payMode==='partial'?('جزئي عبر '+esc(o.payApp||'')+' — مدفوع '+money(o.deposit)+' / باقٍ '+money(o.remaining)):('كامل عبر '+esc(o.payApp||'')+' — '+money(o.deposit));
     const stepPill=(k)=>`<button class="btn btn-sm" style="${st===k?`background:${ORDER_STAGES[k].fg};color:#fff;border-color:${ORDER_STAGES[k].fg}`:''};font-size:11.5px;padding:6px 9px" onclick="setOrderStatus('${o.id}','${k}')">${ORDER_STAGES[k].ic} ${ORDER_STAGES[k].t}</button>`;
@@ -5100,7 +5100,7 @@ function renderOrders(list){
         <div class="muted" style="font-size:11px;font-weight:700;margin-bottom:5px">🛻 تعيين الحمّال / السائق</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
           <input class="inp" id="pr_phone_${o.id}" inputmode="tel" placeholder="رقم الحمّال" list="portersDL" style="width:130px" oninput="porterAutofill('${o.id}')">
-          <input class="inp" id="pr_name_${o.id}" placeholder="اسم الحمّال" style="flex:1;min-width:110px">
+          <input class="inp" id="pr_name_${o.id}" placeholder="اسم الحمّال" list="portersNameDL" style="flex:1;min-width:110px" oninput="porterAutofillName('${o.id}')">
           <input class="inp" id="pr_wage_${o.id}" type="number" step="any" placeholder="أجرة" value="${Number(o.delivery)||0}" style="width:78px" title="أجرة الحمل المدفوعة للحمّال">
           <button class="btn btn-sm btn-primary" onclick="assignPorter('${o.id}')">${svg(I.check,13)} تعيين</button>
         </div>`}
@@ -5130,6 +5130,7 @@ function findOrCreatePorter(name,phone){
   return p;
 }
 function porterAutofill(oid){const ph=val('pr_phone_'+oid);const d=digitsOnly(ph);if(!d)return;const p=(DB.porters||[]).find(x=>digitsOnly(x.phone)===d);const nm=document.getElementById('pr_name_'+oid);if(p&&nm&&!nm.value)nm.value=p.name||'';}
+function porterAutofillName(oid){const nm=(val('pr_name_'+oid)||'').trim();if(!nm)return;const p=(DB.porters||[]).find(x=>(x.name||'').trim()===nm);const ph=document.getElementById('pr_phone_'+oid);if(p&&ph&&!ph.value)ph.value=p.phone||'';}
 function assignPorter(oid){
   const o=(DB.orders||[]).find(x=>x.id===oid);if(!o)return;
   const name=(val('pr_name_'+oid)||'').trim();const phone=(val('pr_phone_'+oid)||'').trim();
