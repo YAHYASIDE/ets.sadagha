@@ -517,8 +517,8 @@ html.dark .cust-img{background:#0E1626}
 .pd-thumb{width:52px;height:52px;border-radius:10px;background:#eef2f7 center/cover no-repeat;border:2px solid transparent;cursor:pointer}
 .pd-thumb.on{border-color:var(--primary)}
 /* تذييل المتجر */
-.sf-footer{margin-top:26px;background:var(--navy);color:#cbd5e1;padding:22px 18px 24px;text-align:center}
-.sf-footer .ft-logo{width:54px;height:54px;border-radius:50%;background:#fff center/contain no-repeat;margin:0 auto 10px}
+.sf-footer{margin-top:18px;background:var(--navy);color:#cbd5e1;padding:16px 16px 18px;text-align:center}
+.sf-footer .ft-logo{width:44px;height:44px;border-radius:50%;background:#fff center/contain no-repeat;margin:0 auto 7px}
 .sf-footer h4{color:#fff;font-size:16px;font-weight:800;margin-bottom:4px}
 .sf-footer .ft-row{font-size:13px;margin:5px 0;display:flex;align-items:center;justify-content:center;gap:7px}
 .sf-footer .ft-row svg{width:15px;height:15px;opacity:.85}
@@ -527,7 +527,7 @@ html.dark .cust-img{background:#0E1626}
 .sf-footer .ft-social svg{width:19px;height:19px}
 .sf-footer .ft-copy{font-size:11.5px;opacity:.6;margin-top:14px}
 /* لماذا + طرق الدفع داخل التذييل */
-.ft-why{font-size:13px;font-weight:800;color:#fff;margin:18px 0 9px}
+.ft-why{font-size:13px;font-weight:800;color:#fff;margin:12px 0 7px}
 .ft-badges{display:grid;grid-template-columns:1fr 1fr;gap:8px;max-width:340px;margin:0 auto}
 .ft-badge{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.1);border-radius:11px;padding:8px 10px;text-align:start}
 .ft-badge>span{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;flex:0 0 auto;background:rgba(255,255,255,.13);color:#fff}
@@ -538,7 +538,7 @@ html.dark .cust-img{background:#0E1626}
 .ft-pays{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;max-width:360px;margin:0 auto}
 .ft-pays span{display:flex;align-items:center;gap:5px;background:rgba(255,255,255,.1);border-radius:9px;padding:5px 9px;font-size:11px;font-weight:700;color:#e8eef7}
 .ft-pays span svg{width:13px;height:13px;color:#cfe0ff}
-.ft-info{margin-top:16px}
+.ft-info{margin-top:11px}
 /* شريط الثقة + طرق الدفع */
 .sf-trust{padding:22px 14px 0}
 .trust-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
@@ -1288,6 +1288,8 @@ if(DB.settings.cloudSync===undefined)DB.settings.cloudSync=false;
 if(!DB.settings.loyalty)DB.settings.loyalty={enabled:true,name:'spj',earnRate:5,redeemValue:1};
 if(!DB.loyalty)DB.loyalty={};
 if(!DB.craftsmen)DB.craftsmen=[];
+if(!DB.porters)DB.porters=[];
+if(!DB.porterPays)DB.porterPays=[];
 if(!DB.settings.professions)DB.settings.professions=['سباك','كهربائي','بنّاء','مقاول','حمّال','نجار','حداد','دهان','فني تكييف','عامل نظافة'];
 if(!DB.settings.engProfessions)DB.settings.engProfessions=['مهندس مدني','مهندس معماري','مكتب دراسات هندسية','مساح أراضٍ','مقاول بناء','استشاري ديكور','خبير عقاري','مهندس كهرباء','مهندس تكييف','مراقب أشغال'];
 if(DB.settings.loyalty&&DB.settings.loyalty.referBonus===undefined)DB.settings.loyalty.referBonus=50;
@@ -1530,6 +1532,8 @@ function waOpen(num,text){
   window.open(web,'_blank');
 }
 function balText(bal){bal=Number(bal)||0;return bal>0?`عليكم: ${money(bal)} ${CUR()}`:bal<0?`لكم (رصيد دائن): ${money(-bal)} ${CUR()}`:'الحساب مُسوّى (لا يوجد رصيد)';}
+function balColor(bal){bal=Number(bal)||0;return bal>0?'#DC2626':bal<0?'#15803D':'#64748b';}
+function balHtml(bal){return `<span style="color:${balColor(bal)};font-weight:700">${balText(bal)}</span>`;}
 function invLiveBal(sale){const c=sale&&sale.customerId&&DB.customers.find(x=>x.id===sale.customerId);return c?(Number(c.balance)||0):(sale&&sale.balanceAfter!=null?sale.balanceAfter:0);}
 
 /* ====================== الصندوق ====================== */
@@ -1560,7 +1564,7 @@ const PAGES=[
   {id:'regs',t:'تسجيلات الزبائن',sub:'طلبات تسجيل من المتجر وتأكيدها',icon:I.phone},
   {id:'orders',t:'الطلبات',sub:'طلبات الزبائن من المتجر وتحويلها لفواتير',icon:I.store},
   {id:'vouchers',t:'إيصالات القبض والدفع',sub:'إيصالات قبض وصرف لكل الحسابات',icon:I.wallet},
-  {id:'expenses',t:'المصروفات والعمال',sub:'المصاريف وأجور العمال وغياباتهم',icon:I.expense},
+  {id:'expenses',t:'المصروفات والعمال',sub:'المصاريف · الحمّالون والسائقون · أجور العمال',icon:I.expense},
   {id:'crafts',t:'العمال والحرفيون',sub:'دليل الحرفيين وطلباتهم وكشوف حساباتهم',icon:I.people},
   {id:'cash',t:'الصندوق',sub:'الوارد والصادر والرصيد',icon:I.wallet},
   {id:'accounts',t:'الصناديق وتطبيقات البنكية',sub:'الصناديق والتطبيقات البنكية والخدمات',icon:I.wallet,hide:1},
@@ -1692,7 +1696,7 @@ function closeDrawer(){document.getElementById('drawer').classList.remove('open'
 function render(){
   const v=document.getElementById('view');
   ({dash:vDash,store:vStore,inventory:vInventory,warehouses:vWarehouses,invoice:vInvoice,pos:vPos,sale:vSale,today:vJournal,purchase:vPurchase,contacts:vContacts,customers:vCustomers,
-    suppliers:vSuppliers,regs:vRegs,orders:vOrders,vouchers:vVouchers,journal:vJournal,expenses:vExpenses,cash:vCash,accounts:vAccounts,reports:vReports,notify:vNotify,settings:vSettings,users:vUsers,crafts:vCrafts}[current]||vDash)(v);
+    suppliers:vSuppliers,regs:vRegs,orders:vOrders,vouchers:vVouchers,journal:vJournal,expenses:vExpenses,cash:vCash,accounts:vAccounts,reports:vReports,notify:vNotify,settings:vSettings,users:vUsers,crafts:vCrafts,porters:vPorters}[current]||vDash)(v);
   if(typeof renderMiniInv==='function')renderMiniInv();
   if(typeof renderMiniPur==='function')renderMiniPur();
 }
@@ -2733,8 +2737,8 @@ function updateBalRow(){
     if(bx&&bx.type!=='cash'){box.innerHTML=`<span class="inv-chip">مدفوع عبر ${esc(bx.name)} (بلا دين)</span>`;return;}
     box.innerHTML=`<span class="inv-chip warn">اختر الحساب: عميل (آجل) أو تطبيق دفع</span>`;return;}
   const rem=invRemaining();
-  box.innerHTML=`<span class="inv-chip">رصيد العميل قبل: <b>${m(c.balance||0)}</b></span>
-    <span class="inv-chip">رصيد بعد: <b>${m((c.balance||0)+rem)}</b></span>`;
+  box.innerHTML=`<span class="inv-chip">رصيد العميل قبل: <b style="color:${balColor(c.balance||0)}">${m(c.balance||0)}</b></span>
+    <span class="inv-chip">رصيد بعد: <b style="color:${balColor((c.balance||0)+rem)}">${m((c.balance||0)+rem)}</b></span>`;
 }
 function renderSaleSearch(){
   const box=document.getElementById('saleResults');if(!box)return;
@@ -3038,7 +3042,7 @@ function invSave(){
   }else if(isCr){payments.forEach(p=>{const pa=Number(p.amount)||0;if(pa>0)addCash('in',pa,(editing?'تعديل دفعة فاتورة #':'دفعة فاتورة آجلة #')+no,sale.id,p.box||saleBox,sale.date);});}
   else if(paid>0)addCash('in',paid,(editing?'تعديل فاتورة #':'بيع #')+no,sale.id,saleBox,sale.date);
   save();_aff.forEach(p=>cloudPutProduct(p));
-  if(cust&&!isReturn){const _lk=custReg(cust);if(_lk){const _prodBase=Math.max(0,cart.filter(l=>!l.service).reduce((a,l)=>a+(lineCalc(l).total||0),0));const _earned=loyEarn(_lk,_prodBase,'كسب من فاتورة #'+no);custTxn(_lk,'فاتورة #'+no+' بمبلغ '+m(net)+(_earned?(' · +'+_earned+' '+loyName()):''));if(_earned>0)toast('مُنح الزبون '+_earned+' '+loyName(),'ok');}}
+  if(cust&&!isReturn){const _lk=custReg(cust);if(_lk){const _prodBase=Math.max(0,cart.filter(l=>!l.service&&!/حمل|توصيل|livr|transport/i.test(l.name||'')).reduce((a,l)=>a+(lineCalc(l).total||0),0));const _earned=loyEarn(_lk,_prodBase,'كسب من فاتورة #'+no);custTxn(_lk,'فاتورة #'+no+' بمبلغ '+m(net)+(_earned?(' · +'+_earned+' '+loyName()):''));if(_earned>0)toast('مُنح الزبون '+_earned+' '+loyName(),'ok');}}
   if(cust)syncCustToReg(cust);
   editSaleId='';cart=[];saleCustomer='';_pickedId='';invPayments=[];invMin=false;
   toast(editing?('تم تعديل الفاتورة #'+no):(isReturn?('تم تسجيل مرتجع البيع #'+no+' — أُعيدت المواد للمخزن'):('تم حفظ الفاتورة #'+no)),'ok');
@@ -3122,9 +3126,9 @@ function invoiceBodyHTML(sale,asQuote){
           ${asQuote
             ? `<div style="font-size:11.5px;color:#475569;border-top:1px solid #E2E8F0;padding-top:8px;margin-top:4px;line-height:1.7">هذا <b>عرض سعر</b> وليس فاتورة. الأسعار صالحة ${sale.validDays||7} أيام وقابلة للتغيير حسب التوفّر.</div>`
             : totalRow('المدفوع',m(sale.paid),{color:'#000',lblColor:'#000',big:true})
-              +(sale.customerId?totalRow('رصيد الحساب قبل الفاتورة',balText(sale.balanceBefore||0),{border:true}):'')
+              +(sale.customerId?totalRow('رصيد الحساب قبل الفاتورة',balHtml(sale.balanceBefore||0),{border:true}):'')
               +(sale.remaining>0?totalRow('المتبقّي من هذه الفاتورة',m(sale.remaining),{color:'#DC2626',border:true}):totalRow('حالة الفاتورة','مدفوعة بالكامل',{color:'#15803D',lblColor:'#000',border:true}))
-              +(sale.customerId?totalRow('رصيد الحساب بعد الفاتورة',balText(sale.balanceAfter!=null?sale.balanceAfter:invLiveBal(sale)),{color:'#1D4ED8',border:true,big:true}):'')}
+              +(sale.customerId?totalRow('رصيد الحساب بعد الفاتورة',balHtml(sale.balanceAfter!=null?sale.balanceAfter:invLiveBal(sale)),{border:true,big:true}):'')}
         </div>
       </div>
 
@@ -3979,7 +3983,7 @@ function vchPartyName(v){
   if(v.partyType==='supplier'){const s=DB.suppliers.find(x=>x.id===v.partyId);return s?s.name:(v.partyName||'مورد');}
   return v.partyName||'حساب آخر';
 }
-const APP_BUILD='يومية-جديدة · 20/06 #116';
+const APP_BUILD='يومية-جديدة · 20/06 #120';
 let jrnDay=null,jrnBox='',jrnQ='';
 function journalEntries(day,boxId){
   const E=[];const sameDay=d=>(d||'').slice(0,10)===day;
@@ -4372,12 +4376,13 @@ function changeWorkersPin(){
 }
 function vExpenses(v){
   if(expTab!=='workers')_workersUnlocked=false;
-  v.innerHTML=`<div style="display:flex;gap:8px;margin-bottom:14px">
+  v.innerHTML=`<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
       <button class="chip ${expTab==='exp'?'active':''}" onclick="expTab='exp';render()">المصروفات</button>
+      <button class="chip ${expTab==='porters'?'active':''}" onclick="expTab='porters';render()">🛻 الحمّالون والسائقون</button>
       <button class="chip ${expTab==='workers'?'active':''}" onclick="expTab='workers';render()">العمال والأجور${_workersUnlocked?(' ('+DB.workers.length+')'):' 🔒'}</button>
     </div><div id="expBody"></div>`;
   const body=document.getElementById('expBody');
-  if(expTab==='workers')vWorkers(body);else vExpensesMain(body);
+  if(expTab==='workers')vWorkers(body);else if(expTab==='porters')vPorters(body);else vExpensesMain(body);
 }
 function vExpensesMain(v){
   const total=DB.expenses.filter(e=>new Date(e.date)>=startOf('month')).reduce((a,e)=>a+e.amount,0);
@@ -5072,7 +5077,7 @@ function renderOrders(list){
   if(_ordFilter&&_ordFilter!=='all')list=list.filter(o=>{const st=o.status||'pending';return _ordFilter==='cancelled'?st==='rejected':st===_ordFilter;});
   const el=document.getElementById('ordersList');if(!el)return;
   if(!list.length){el.innerHTML=`<div class="empty" style="padding:30px">${svg(I.store,38)}<b>لا طلبات${_ordFilter!=='all'?' في هذه الحالة':' بعد'}</b>ستظهر هنا طلبات الزبائن من المتجر</div>`;return;}
-  el.innerHTML=list.map(o=>{
+  el.innerHTML=`<datalist id="portersDL">${(DB.porters||[]).map(p=>`<option value="${esc(p.phone||'')}">${esc(p.name||'')}</option>`).join('')}</datalist>`+list.map(o=>{
     const st=o.status||'pending';const stg=orderStage(o);const isCancel=st==='rejected';
     const payTxt=o.payMode==='balance'?('من الرصيد: '+money(o.fromBalance||0)+(o.remaining>0?(' · يُحصَّل عند التسليم: '+money(o.remaining)):' (مغطّى بالكامل)')):o.payMode==='cod'?'عند الاستلام':o.payMode==='partial'?('جزئي عبر '+esc(o.payApp||'')+' — مدفوع '+money(o.deposit)+' / باقٍ '+money(o.remaining)):('كامل عبر '+esc(o.payApp||'')+' — '+money(o.deposit));
     const stepPill=(k)=>`<button class="btn btn-sm" style="${st===k?`background:${ORDER_STAGES[k].fg};color:#fff;border-color:${ORDER_STAGES[k].fg}`:''};font-size:11.5px;padding:6px 9px" onclick="setOrderStatus('${o.id}','${k}')">${ORDER_STAGES[k].ic} ${ORDER_STAGES[k].t}</button>`;
@@ -5087,6 +5092,19 @@ function renderOrders(list){
       ${o.voice?`<div style="margin-top:8px"><div class="muted" style="font-size:11px;margin-bottom:3px">🎙 رسالة العميل الصوتية (العنوان):</div><audio controls src="${o.voice}" style="width:100%;max-width:320px;height:34px"></audio></div>`:''}
       ${o.coords?`<a class="btn btn-sm" href="https://maps.google.com/?q=${o.coords.lat},${o.coords.lng}" target="_blank" style="margin-top:8px">📍 موقع العميل على الخريطة</a>`:''}
       ${o.note?`<div class="muted" style="font-size:12px;margin-top:5px">ملاحظة: ${esc(o.note)}</div>`:''}
+      ${!isCancel?`<div style="margin-top:10px;border-top:1px dashed var(--line);padding-top:8px">
+        ${o.porter?`<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:#FEF3C7;border-radius:9px;padding:8px 10px">
+          <div style="font-size:12.5px"><b>🛻 الحمّال: ${esc(o.porter.name)}</b> <span class="muted" dir="ltr">${esc(o.porter.phone||'')}</span><div class="muted" style="font-size:11px">أجرة الحمل المدفوعة له: ${money(o.porter.wage||0)} ${CUR()}${(Number(o.delivery)||0)?(' · الربح: '+money((Number(o.delivery)||0)-(Number(o.porter.wage)||0))+' '+CUR()):''}</div></div>
+          <button class="btn btn-sm btn-ghost" onclick="clearPorter('${o.id}')">تغيير</button>
+        </div>`:`
+        <div class="muted" style="font-size:11px;font-weight:700;margin-bottom:5px">🛻 تعيين الحمّال / السائق</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+          <input class="inp" id="pr_phone_${o.id}" inputmode="tel" placeholder="رقم الحمّال" list="portersDL" style="width:130px" oninput="porterAutofill('${o.id}')">
+          <input class="inp" id="pr_name_${o.id}" placeholder="اسم الحمّال" style="flex:1;min-width:110px">
+          <input class="inp" id="pr_wage_${o.id}" type="number" step="any" placeholder="أجرة" value="${Number(o.delivery)||0}" style="width:78px" title="أجرة الحمل المدفوعة للحمّال">
+          <button class="btn btn-sm btn-primary" onclick="assignPorter('${o.id}')">${svg(I.check,13)} تعيين</button>
+        </div>`}
+      </div>`:''}
       ${!isCancel?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;align-items:center">
         <span class="muted" style="font-size:11px;font-weight:700">الحالة:</span>${stepPill('pending')}${stepPill('delivering')}${stepPill('delivered')}
       </div>`:''}
@@ -5101,6 +5119,83 @@ function renderOrders(list){
         <button class="btn btn-icon btn-ghost btn-sm" title="حذف نهائي" onclick="delOrder('${o.id}')">${svg(I.trash,15)}</button>
       </div>
     </div>`;}).join('');
+}
+/* ====== الحملة والتشغيل (الحمّالون/السائقون) ====== */
+function porterKey(phone,name){const d=digitsOnly(phone||'');return d?('ph_'+d):('nm_'+(name||'').trim());}
+function findOrCreatePorter(name,phone){
+  name=(name||'').trim();const d=digitsOnly(phone||'');
+  let p=(DB.porters||[]).find(x=>(d&&digitsOnly(x.phone)===d)||(!d&&x.name===name&&name));
+  if(!p){p={id:uid('prt'),name:name||('حمّال '+((DB.porters||[]).length+1)),phone:(phone||'').trim(),since:todayISO()};DB.porters=DB.porters||[];DB.porters.push(p);}
+  else{if(name)p.name=name;if(phone&&!p.phone)p.phone=(phone||'').trim();}
+  return p;
+}
+function porterAutofill(oid){const ph=val('pr_phone_'+oid);const d=digitsOnly(ph);if(!d)return;const p=(DB.porters||[]).find(x=>digitsOnly(x.phone)===d);const nm=document.getElementById('pr_name_'+oid);if(p&&nm&&!nm.value)nm.value=p.name||'';}
+function assignPorter(oid){
+  const o=(DB.orders||[]).find(x=>x.id===oid);if(!o)return;
+  const name=(val('pr_name_'+oid)||'').trim();const phone=(val('pr_phone_'+oid)||'').trim();
+  const wage=parseFloat(val('pr_wage_'+oid))||0;
+  if(!name&&!phone){toast('أدخل اسم الحمّال أو رقمه','err');return;}
+  const p=findOrCreatePorter(name,phone);
+  o.porter={id:p.id,name:p.name,phone:p.phone,wage};
+  save();try{cloudSetOrder(o.id,{porter:o.porter});}catch(e){}
+  renderOrders();toast('تم تعيين الحمّال «'+p.name+'» وأُضيف لقائمة الحملة','ok');
+}
+function clearPorter(oid){const o=(DB.orders||[]).find(x=>x.id===oid);if(!o)return;o.porter=null;save();try{cloudSetOrder(o.id,{porter:null});}catch(e){}renderOrders();}
+function porterJobs(pid){return (DB.orders||[]).filter(o=>o.porter&&o.porter.id===pid).map(o=>({no:o.no,date:o.date,wage:Number(o.porter.wage)||0,charged:Number(o.delivery)||0}));}
+function porterPaidTotal(pid){return (DB.porterPays||[]).filter(x=>x.porterId===pid).reduce((a,x)=>a+(Number(x.amount)||0),0);}
+function porterDue(pid){return Math.max(0,porterJobs(pid).reduce((a,j)=>a+j.wage,0)-porterPaidTotal(pid));}
+function isToday(d){try{return new Date(d).toDateString()===new Date().toDateString();}catch(e){return false;}}
+function porterDueToday(pid){const w=porterJobs(pid).filter(j=>isToday(j.date)).reduce((a,j)=>a+j.wage,0);const paid=(DB.porterPays||[]).filter(x=>x.porterId===pid&&isToday(x.date)).reduce((a,x)=>a+(Number(x.amount)||0),0);return Math.max(0,w-paid);}
+function vPorters(v){
+  const ps=(DB.porters||[]).slice();
+  const todayWage=ps.reduce((a,p)=>a+porterJobs(p.id).filter(j=>isToday(j.date)).reduce((s,j)=>s+j.wage,0),0);
+  const todayCharged=(DB.orders||[]).filter(o=>o.porter&&isToday(o.date)).reduce((a,o)=>a+(Number(o.delivery)||0),0);
+  const totalDue=ps.reduce((a,p)=>a+porterDue(p.id),0);
+  v.innerHTML=`
+    <div class="cards3" style="margin-bottom:14px">
+      <div class="card stat"><span class="label">أجور اليوم (ندفعها للحمّالين)</span><div class="val t-num" style="font-size:18px;color:var(--danger)">${money(todayWage)} <small>${CUR()}</small></div></div>
+      <div class="card stat"><span class="label">حُصِّل من الزبائن اليوم (حمل)</span><div class="val t-num" style="font-size:18px;color:var(--success)">${money(todayCharged)} <small>${CUR()}</small></div></div>
+      <div class="card stat"><span class="label">ربح/خسارة الحمل اليوم</span><div class="val t-num" style="font-size:18px;color:${(todayCharged-todayWage)>=0?'var(--success)':'var(--danger)'}">${money(todayCharged-todayWage)} <small>${CUR()}</small></div></div>
+    </div>
+    <div class="panel"><div class="panel-h">${svg(I.truck,18)}<h3>الحمّالون والسائقون</h3><div class="spacer"></div><span class="muted" style="font-size:12px">إجمالي المستحقّ: <b style="color:var(--danger)">${money(totalDue)} ${CUR()}</b></span></div>
+      <div style="padding:10px">${ps.length?ps.map(p=>{const jobs=porterJobs(p.id);const due=porterDue(p.id);const dueT=porterDueToday(p.id);const charged=jobs.reduce((a,j)=>a+j.charged,0);const wag=jobs.reduce((a,j)=>a+j.wage,0);
+        return `<div style="border:1px solid var(--line);border-radius:12px;padding:11px 13px;margin-bottom:9px">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap">
+            <div><b style="font-size:14px">${esc(p.name)}</b> <span class="muted" dir="ltr" style="font-size:12px">${esc(p.phone||'')}</span>
+              <div class="muted" style="font-size:11.5px;margin-top:3px">${jobs.length} عملية · أجور: ${money(wag)} · حُصّل: ${money(charged)} · ربح: <b style="color:${(charged-wag)>=0?'var(--success)':'var(--danger)'}">${money(charged-wag)}</b></div></div>
+            <div style="text-align:end">
+              <div class="muted" style="font-size:11px">مستحقّ اليوم</div><b style="font-size:16px;color:var(--danger)">${money(dueT)} ${CUR()}</b>
+              <div class="muted" style="font-size:10.5px">الإجمالي غير المدفوع: ${money(due)}</div></div>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:9px">
+            ${due>0?`<button class="btn btn-sm btn-primary" onclick="payPorter('${p.id}')">${svg(I.cash,13)} دفع المستحقّ (${money(due)})</button>`:`<span class="badge b-ok">لا مستحقّات</span>`}
+            <button class="btn btn-sm" onclick="porterStatement('${p.id}')">${svg(I.report,13)} كشف الحساب</button>
+          </div>
+        </div>`;}).join(''):`<div class="empty" style="padding:24px">${svg(I.truck,34)}<b>لا حمّالون بعد</b>يُضافون تلقائياً عند تعيينهم على الطلبات</div>`}</div>
+    </div>`;
+}
+function payPorter(pid){
+  const p=(DB.porters||[]).find(x=>x.id===pid);if(!p)return;const due=porterDue(pid);
+  if(due<=0){toast('لا مستحقّات','ok');return;}
+  confirmDlg('دفع مستحقّ «'+p.name+'»؟','سيُسجَّل صرف '+m(due)+' من الصندوق وتُصفَّر مستحقّاته.',()=>{
+    DB.porterPays=DB.porterPays||[];DB.porterPays.push({id:uid('pp'),porterId:pid,amount:due,date:new Date().toISOString(),note:'دفع مستحقّ حمل'});
+    try{addCash('out',due,'أجور حمل — '+p.name,'',defBox());}catch(e){}
+    save();render();toast('دُفع '+m(due)+' للحمّال '+p.name,'ok');
+  });
+}
+function porterStatement(pid){
+  const p=(DB.porters||[]).find(x=>x.id===pid);if(!p)return;const jobs=porterJobs(pid).slice().sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const pays=(DB.porterPays||[]).filter(x=>x.porterId===pid).slice().sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const cell='padding:6px 9px;border:1px solid var(--line);font-size:12px';
+  modal({title:'كشف الحمّال — '+esc(p.name),size:'lg',body:`
+    <div class="muted" style="font-size:12px;margin-bottom:10px">المستحقّ الحالي: <b style="color:var(--danger)">${m(porterDue(pid))}</b> · مستحقّ اليوم: <b>${m(porterDueToday(pid))}</b></div>
+    <b style="font-size:13px">عمليات الحمل</b>
+    <table style="width:100%;border-collapse:collapse;margin:6px 0 14px"><thead><tr style="background:var(--surface-2)"><th style="${cell}">التاريخ</th><th style="${cell}">طلب</th><th style="${cell}">أجرته</th><th style="${cell}">حُصّل</th></tr></thead>
+      <tbody>${jobs.length?jobs.map(j=>`<tr><td style="${cell}">${fmtDate(j.date)}</td><td style="${cell};text-align:center">#${esc(j.no)}</td><td style="${cell};text-align:center">${money(j.wage)}</td><td style="${cell};text-align:center">${money(j.charged)}</td></tr>`).join(''):`<tr><td colspan="4" style="${cell};text-align:center" class="muted">لا عمليات</td></tr>`}</tbody></table>
+    <b style="font-size:13px">المدفوعات له</b>
+    <table style="width:100%;border-collapse:collapse;margin-top:6px"><thead><tr style="background:var(--surface-2)"><th style="${cell}">التاريخ</th><th style="${cell}">المبلغ</th></tr></thead>
+      <tbody>${pays.length?pays.map(x=>`<tr><td style="${cell}">${fmtDate(x.date)}</td><td style="${cell};text-align:center">${money(x.amount)}</td></tr>`).join(''):`<tr><td colspan="2" style="${cell};text-align:center" class="muted">لا مدفوعات</td></tr>`}</tbody></table>`,
+    actions:[{label:porterDue(pid)>0?('دفع المستحقّ '+m(porterDue(pid))):'إغلاق',primary:porterDue(pid)>0,fn:()=>{if(porterDue(pid)>0){closeModal();setTimeout(()=>payPorter(pid),120);return false;}return true;}},{label:'إغلاق',fn:()=>true}]});
 }
 function cancelOrderStore(id){
   const o=(DB.orders||[]).find(x=>x.id===id);if(!o)return;
@@ -5168,7 +5263,7 @@ function convertOrder(id){
     const items=o.items.map(l=>{const p=DB.products.find(x=>x.id===l.id);const price=Number(l.price)||0,qty=Number(l.qty)||0;
       return {id:l.id,name:l.name,code:p?(p.code||''):'',unit:l.unit||(p?(p.unit||'قطعة'):'قطعة'),factor:Number(l.factor)||1,price,qty,disc:0,total:price*qty,wh,warehouseName:whName(wh),cost:p?(p.wholesale||0):0};});
     if(o.delivery>0)items.push({id:'svc_deliv',name:'الحمل (توصيل)',unit:'خدمة',price:o.delivery,qty:1,disc:0,total:o.delivery,service:true,wh,warehouseName:whName(wh),cost:0});
-    const goodsTotal=items.filter(i=>!i.service).reduce((a,i)=>a+i.total,0);
+    const goodsTotal=items.filter(i=>!i.service&&!/حمل|توصيل|livr|transport/i.test(i.name||'')).reduce((a,i)=>a+i.total,0);
     const ptsDisc=Math.max(0,Number(o.pointsDiscount)||0);
     if(ptsDisc>0)items.push({id:'loy_disc',name:'خصم نقاط '+loyName(),unit:'خصم',price:-ptsDisc,qty:1,disc:0,total:-ptsDisc,service:true,wh,warehouseName:whName(wh),cost:0});
     const subtotal=items.reduce((a,i)=>a+i.total,0);const total=subtotal;
@@ -6534,7 +6629,7 @@ function renderFooter(){
   const rows=[];
   if(s.address)rows.push(`<div class="ft-row">${svg(I.house2,15)} ${esc(s.address)}</div>`);
   if(s.hours)rows.push(`<div class="ft-row">${svg(I.report,15)} ${esc(s.hours)}</div>`);
-  if(wa)rows.push(`<div class="ft-row">${svg(I.wallet,15)} ${esc(s.whatsapp)}</div>`);
+  // (أُزيل صفّ الرقم بناءً على طلب المستخدم)
   // أيقونات التواصل
   const WA='<svg viewBox="0 0 24 24" fill="currentColor" width="19" height="19"><path d="M12 2a10 10 0 0 0-8.6 15l-1.3 4.8 4.9-1.3A10 10 0 1 0 12 2zm5 13.5c-.2.6-1.2 1.2-1.7 1.2-.4 0-.9.2-3-.9-2.5-1-4-3.6-4.2-3.8-.1-.2-1-1.3-1-2.5s.6-1.8.9-2c.2-.2.4-.3.6-.3h.4c.2 0 .4 0 .5.5l.7 1.7c.1.2 0 .4-.1.5l-.3.4c-.1.1-.3.3-.1.5.1.3.7 1.1 1.4 1.7.9.8 1.6 1 1.9 1.2.2 0 .4 0 .5-.1l.7-.8c.2-.2.3-.1.5-.1l1.6.8c.2.1.4.2.4.3.1.1.1.6 0 .9z"/></svg>';
   const FB='<svg viewBox="0 0 24 24" fill="currentColor" width="19" height="19"><path d="M14 9V7c0-.6.4-1 1-1h2V3h-3a4 4 0 0 0-4 4v2H8v3h2v9h3v-9h2.5l.5-3z"/></svg>';
@@ -6556,9 +6651,6 @@ function renderFooter(){
 
     <div class="ft-why">${t('whyUs')}</div>
     <div class="ft-badges">${badge(I.check,'tQuality','tQualitySub')}${badge(I.store,'tSupport','tSupportSub')}${badge(I.trend,'tPrice','tPriceSub')}${badge(I.report,'tTrust','tTrustSub')}</div>
-
-    ${pays.length?`<div class="ft-paytitle">${t('payTitle')}</div>
-      <div class="ft-pays">${pays.map(p=>`<span>${svg(payIcon(p),13)} ${esc(p)}</span>`).join('')}</div>`:''}
 
     ${rows.length?`<div class="ft-info">${rows.join('')}</div>`:''}
     ${soc.length?`<div class="ft-social">${soc.join('')}</div>`:''}
