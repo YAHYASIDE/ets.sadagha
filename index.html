@@ -619,6 +619,17 @@ html.dark .pd-thumb{background-color:#1B2742}
 .cart-head button{border:0;background:var(--line-2);width:32px;height:32px;border-radius:50%;font-size:15px}
 .cart-items{overflow-y:auto;padding:6px 0;flex:1}
 .cart-row{display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid var(--line-2)}
+.cart-row2{display:flex;align-items:center;gap:9px;padding:9px 14px;border-bottom:1px solid var(--line-2)}
+.cart-row2 .cr-img{width:42px;height:42px;border-radius:9px;background:var(--surface-2,#f1f5f9) center/cover no-repeat;display:grid;place-items:center;color:var(--muted);flex:0 0 auto}
+.cart-row2 .cr-units{display:flex;gap:5px;margin-top:5px;flex-wrap:wrap}
+.cart-row2 .cr-u{border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:7px;padding:3px 10px;font-size:11px;font-weight:600;cursor:pointer}
+.cart-row2 .cr-u.on{background:var(--primary);color:#fff;border-color:var(--primary)}
+.cart-row2 .cr-qty{display:flex;align-items:center;gap:7px;flex:0 0 auto}
+.cart-row2 .cr-qty button{width:26px;height:26px;border-radius:7px;border:1px solid var(--line);background:#fff;font-size:16px;font-weight:700;cursor:pointer;color:var(--primary-d);line-height:1;display:grid;place-items:center}
+.cart-row2 .cr-qty span{min-width:18px;text-align:center;font-weight:700;font-size:13px}
+.cart-row2 .cr-x{background:transparent;border:0;color:#dc2626;font-size:15px;cursor:pointer;flex:0 0 auto;padding:2px;align-self:flex-start}
+html.dark .cart-row2 .cr-u{background:var(--surface-2);color:var(--ink);border-color:var(--line-2)}
+html.dark .cart-row2 .cr-qty button{background:var(--surface-2);border-color:var(--line-2);color:var(--ink)}
 .cart-foot{padding:16px 18px;border-top:1px solid var(--line-2)}
 .qty-ctrl{display:flex;align-items:center;gap:8px}
 .qty-ctrl button{width:30px;height:30px;border-radius:9px;border:1px solid var(--line);background:#fff;font-size:16px;font-weight:700}
@@ -3968,7 +3979,7 @@ function vchPartyName(v){
   if(v.partyType==='supplier'){const s=DB.suppliers.find(x=>x.id===v.partyId);return s?s.name:(v.partyName||'مورد');}
   return v.partyName||'حساب آخر';
 }
-const APP_BUILD='يومية-جديدة · 20/06 #112';
+const APP_BUILD='يومية-جديدة · 20/06 #113';
 let jrnDay=null,jrnBox='',jrnQ='';
 function journalEntries(day,boxId){
   const E=[];const sameDay=d=>(d||'').slice(0,10)===day;
@@ -6640,19 +6651,46 @@ function renderStoreCart(){
           </div>`;}).join('')}</div></div>`:''}`;
     foot.innerHTML='';return;
   }
-  items.innerHTML=_ordBanner+CART.map((l,i)=>`<div class="cart-row">
-    <div style="flex:1"><b style="font-size:14px">${esc(l.name)}</b><div class="muted" style="font-size:12.5px">${m(l.price)}</div></div>
-    <div class="qty-ctrl">
-      <button onclick="cartStoreQty(${i},-1)">−</button>
-      <input class="qty-input" type="number" min="1" value="${l.qty}" inputmode="numeric" onchange="cartSetQty(${i},this.value)">
-      <button onclick="cartStoreQty(${i},1)">+</button>
-    </div></div>`).join('');
-  const total=CART.reduce((a,l)=>a+l.price*l.qty,0);
+  items.innerHTML=_ordBanner+CART.map((l,i)=>{
+    const p=DB.products.find(x=>x.id===l.id)||{};
+    const img=(typeof prodImg==='function')?prodImg(p):'';
+    const base=p.name||l.name;
+    const units=(p.units&&p.units.length>1)?p.units:null;
+    const lineTot=(Number(l.price)||0)*(Number(l.qty)||0);
+    return `<div class="cart-row2">
+      <button class="cr-x" onclick="cartRemove(${i})" title="حذف">✕</button>
+      <div class="cr-img"${img?` style="background-image:url(${img})"`:''}>${img?'':svg(I.box,18)}</div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;justify-content:space-between;gap:6px;align-items:baseline"><b style="font-size:12.5px;line-height:1.3">${esc(base)}</b><b style="font-size:12.5px;color:var(--primary-d);white-space:nowrap">${m(lineTot)}</b></div>
+        ${units?`<div class="cr-units">${units.map((u,ui)=>{const on=(l.unit||'')===(u.name||'');return `<button class="cr-u${on?' on':''}" onclick="cartSetUnit(${i},${ui})">${esc(u.name)}</button>`;}).join('')}</div>`:`<div class="muted" style="font-size:11px;margin-top:2px">${m(l.price)}</div>`}
+      </div>
+      <div class="cr-qty">
+        <button onclick="cartStoreQty(${i},-1)">−</button>
+        <span>${l.qty}</span>
+        <button onclick="cartStoreQty(${i},1)">+</button>
+      </div>
+    </div>`;}).join('');
+  const subtotal=CART.reduce((a,l)=>a+l.price*l.qty,0);
+  const deliv=(typeof deliveryFee==='function')?deliveryFee():0;
+  const grand=subtotal+deliv;
   foot.innerHTML=`
-    <div style="display:flex;justify-content:space-between;font-size:18px;font-weight:800;margin-bottom:14px">
-      <span>${t('total')}</span><span class="t-num">${m(total)}</span></div>
-    <button class="store-cta" style="background:linear-gradient(135deg,var(--primary),#3b82f6);font-size:16.5px;padding:15px" onclick="checkoutWhatsApp()">🛒 إتمام الطلب والدفع</button>
-    <button class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:8px" onclick="CART=[];saveCart();renderStoreCart();updateCartBadge();renderStoreGrid();renderDeals()">${t('clearCart')}</button>`;
+    <div style="background:var(--surface-2,#f1f5f9);border-radius:12px;padding:11px 13px;font-size:12.5px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span class="muted">المجموع الجزئي</span><b>${m(subtotal)}</b></div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span class="muted">${t('deliveryFee')}</span><b>${m(deliv)}</b></div>
+      <div style="display:flex;justify-content:space-between;border-top:1px dashed var(--line);padding-top:7px"><b>${t('total')}</b><b style="color:var(--primary-d);font-size:15.5px">${m(grand)}</b></div>
+    </div>
+    <button class="store-cta" style="background:linear-gradient(135deg,#16a34a,#22c55e);font-size:15px;padding:13px" onclick="checkoutWhatsApp()">✅ إتمام الشراء</button>
+    <button class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:7px;font-size:13px" onclick="closeCart()">← متابعة التسوق</button>
+    <button class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:5px;font-size:12.5px;color:#dc2626" onclick="CART=[];saveCart();renderStoreCart();updateCartBadge();renderStoreGrid();renderDeals()">🗑 ${t('clearCart')}</button>`;
+}
+function cartRemove(i){if(i<0||i>=CART.length)return;CART.splice(i,1);saveCart();renderStoreCart();updateCartBadge();if(document.getElementById('storeGrid'))renderStoreGrid();if(document.getElementById('dealRow'))renderDeals();}
+function cartSetUnit(i,ui){
+  const l=CART[i];if(!l)return;const p=DB.products.find(x=>x.id===l.id);if(!p||!p.units||!p.units[ui])return;
+  const u=p.units[ui];
+  const j=CART.findIndex((c,idx)=>idx!==i&&c.id===l.id&&(c.unit||'')===(u.name||''));
+  if(j>=0){CART[j].qty+=l.qty;CART.splice(i,1);}
+  else{l.unit=u.name||'';l.price=Number(u.price)||0;l.factor=Number(u.factor)||1;l.name=p.name+(p.units.length>1&&u.name?(' — '+u.name):'');}
+  saveCart();renderStoreCart();updateCartBadge();if(document.getElementById('storeGrid'))renderStoreGrid();if(document.getElementById('dealRow'))renderDeals();
 }
 function cartStoreQty(i,d){const l=CART[i];l.qty+=d;if(l.qty<=0)CART.splice(i,1);saveCart();renderStoreCart();updateCartBadge();renderStoreGrid();renderDeals();}
 function cartSetQty(i,v){const l=CART[i];if(!l)return;let n=parseInt(String(v).replace(/[^0-9]/g,''),10);if(!n||n<1){CART.splice(i,1);}else l.qty=n;saveCart();renderStoreCart();updateCartBadge();renderStoreGrid();renderDeals();}
@@ -6672,27 +6710,33 @@ function openCheckout(num){
   modal({title:t('checkoutTitle'),size:'lg',body:`
     <div style="background:var(--primary-soft);color:var(--primary-d);border-radius:12px;padding:11px 14px;margin-bottom:14px;display:flex;justify-content:space-between;font-weight:800;font-size:15px">
       <span>${t('total')}</span><span>${money(total)} ${CUR()}</span></div>
+    ${(v.name&&v.phone)?`
+    <div style="display:flex;align-items:center;gap:10px;background:var(--surface-2,#f1f5f9);border-radius:12px;padding:10px 13px;margin-bottom:12px">
+      <div style="flex:1;min-width:0"><b style="font-size:14px">${esc(v.name)}</b><div class="muted" style="font-size:12px" dir="ltr">+${esc(v.cc||'222')} ${esc(v.phone)}</div></div>
+      <button type="button" class="btn btn-sm btn-ghost" onclick="closeModal();visitorRegister()">${svg(I.edit||I.user,14)} تعديل</button>
+    </div>
+    <input type="hidden" id="co_name" value="${esc(v.name)}">
+    <input type="hidden" id="co_cc" value="${esc(v.cc||'222')}">
+    <input type="hidden" id="co_phone" value="${esc(v.phone)}">`:`
     <div class="grid2">
-      <div class="field"><label>${t('coName')} *</label><input class="inp" id="co_name" value="${esc(v.name||DB.settings.guestName||'')}" ${v.name?'readonly style="background:var(--surface-2,#f1f5f9)"':''}></div>
+      <div class="field"><label>${t('coName')} *</label><input class="inp" id="co_name" value="${esc(DB.settings.guestName||'')}"></div>
       <div class="field"><label>${t('coPhone')} *</label>
         <div style="display:flex;gap:6px"><select class="inp" id="co_cc" style="max-width:120px">${ccOptions(v.cc||'222')}</select>
         <input class="inp" id="co_phone" type="tel" inputmode="tel" placeholder="رقم الهاتف" value="${esc(v.phone||'')}" style="flex:1"></div>
       </div>
-    </div>
+    </div>`}
     <div class="field"><label>${t('coAddr')} (بالكتابة أو رسالة صوتية)</label>
-        <input class="inp" id="co_addr" placeholder="اكتب عنوانك (الحيّ، الشارع، أقرب معلم)...">
-        <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
-          <button type="button" id="co_micBtn" class="btn" title="تسجيل رسالة صوتية" style="flex:0 0 auto;width:44px;height:42px;padding:0;font-size:19px;border-radius:50%" onclick="toggleVoiceNote('co_micBtn','co_voicePrev')">🎤</button>
-          <div id="co_voicePrev" style="flex:1;font-size:12px;color:var(--muted)"></div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input class="inp" id="co_addr" placeholder="اكتب عنوانك (الحيّ، الشارع، أقرب معلم)..." style="flex:1">
+          <button type="button" id="co_micBtn" class="btn" title="تسجيل رسالة صوتية" style="flex:0 0 auto;width:40px;height:40px;padding:0;font-size:16px;border-radius:10px" onclick="toggleVoiceNote('co_micBtn','co_voicePrev')">🎤</button>
         </div>
-        <div class="muted" style="font-size:11.5px;margin-top:5px">سجّل عنوانك برسالة صوتية تصل للمتجر مع طلبك (اضغط للتسجيل ثم اضغط للإيقاف).</div>
+        <div id="co_voicePrev" style="flex:1;font-size:12px;color:var(--muted);margin-top:5px"></div>
         <style>@keyframes recpulse{0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.55)}50%{box-shadow:0 0 0 8px rgba(220,38,38,0)}}.rec-pulse{animation:recpulse 1s infinite}</style>
     </div>
     <div class="field"><label>${t('coLoc')}</label>
       <button type="button" class="btn" id="co_locBtn" style="width:100%;justify-content:center" onclick="getCheckoutLocation()">${svg(I.store,16)} <span id="co_locTxt">${t('coLocBtn')}</span></button>
       <div id="co_locMsg" style="font-size:12.5px;margin-top:6px;color:var(--muted)"></div>
     </div>
-    <div class="field"><label>${t('coNote')}</label><textarea class="inp" id="co_note" style="min-height:55px"></textarea></div>
     <input type="hidden" id="co_pay" value="">
     <button class="store-cta" style="background:linear-gradient(135deg,#16a34a,#22c55e);font-size:17px;padding:15px;margin-top:6px" onclick="submitCheckout('${num}',${total})">متابعة للدفع ›</button>
   `,actions:[{label:t('close'),fn:()=>true}]});
@@ -6783,14 +6827,14 @@ function deliveryFee(){
   return Number(DB.settings.delivery)||0;
 }
 function openPaymentStep(ctx){
-  _payProof=null;window._payProofs=[];_payMode='full';_payPts=0;_balRemainMode='cod';
+  _payProof=null;window._payProofs=[];_payMode='cod';_payPts=0;_balRemainMode='cod';
   _payApp=(payApps().find(b=>/bankily|بنكيلي/i.test(b.name))||payApps()[0]||{}).id||'';
   ctx.delivery=deliveryFee();
   ctx.itemsTotal=CART.reduce((a,l)=>a+l.price*l.qty,0);
   ctx.grandTotal=ctx.itemsTotal+ctx.delivery;
   window._coCtx=ctx;renderPaymentStep(ctx);
 }
-function setPayMode(m){_payMode=m;if(m==='cod')_payApp='';renderPaymentStep(window._coCtx);}
+function setPayMode(m){_payMode=m;if(m==='cod')_payApp='';if(m!=='points')_payPts=0;renderPaymentStep(window._coCtx);}
 function setPayApp(id){_payApp=id;renderPaymentStep(window._coCtx);}
 function loyUsable(ctx){if(!loyOn()||window._myLoyOff)return 0;const my=myPointsNow();const byTot=Math.floor((ctx.grandTotal||0)/loyRedeemVal());return Math.max(0,Math.min(my,byTot));}
 function setPayPts(){const ctx=window._coCtx;let n=parseFloat(val('co_pts'))||0;n=Math.max(0,Math.min(Math.floor(n),loyUsable(ctx)));_payPts=n;renderPaymentStep(ctx);}
@@ -6803,17 +6847,7 @@ function renderPaymentStep(ctx){
   if(_payMode==='balance'&&creditAvail<=0)_payMode='cod';
   const balUse=Math.min(creditAvail,effTotal);const balRemain=Math.max(0,effTotal-balUse);
   const usable=loyUsable(ctx);
-  const loyBox=(loyOn()&&usable>0)?`
-    <div style="border:1px solid var(--primary);border-radius:14px;padding:11px 13px;margin-bottom:12px;background:var(--primary-soft)">
-      <div style="font-weight:800;font-size:13px;color:var(--primary-d);display:flex;align-items:center;gap:5px">${svg(I.points,15)} ${t('ptsYouHave')} ${money(myPointsNow())} ${esc(loyName())} — ${t('ptsRedeem')}</div>
-      <div style="display:flex;gap:6px;margin-top:8px">
-        <input class="inp" id="co_pts" type="number" inputmode="numeric" placeholder="${t('ptsCount')} ${money(usable)})" value="${_payPts||''}" style="flex:1">
-        <button class="btn btn-sm" onclick="useAllPts()">${t('ptsAll')}</button>
-        <button class="btn btn-sm btn-primary" onclick="setPayPts()">${t('ptsApply')}</button>
-        ${_payPts>0?`<button class="btn btn-sm" onclick="clrPayPts()">${t('ptsCancel')}</button>`:''}
-      </div>
-      ${_payPts>0?`<div style="font-size:12px;color:var(--success);font-weight:700;margin-top:6px">${t('ptsDiscount')} ${money(disc)} ${CUR()} (${money(_payPts)} ${esc(loyName())})</div>`:''}
-    </div>`:'';
+  const loyBox='';
   const summary=`
     <div style="border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-bottom:12px">
       <div style="background:var(--primary);color:#fff;padding:9px 14px;font-weight:800;font-size:14px">${t('orderSummary')} (${esc(ctx.name)})</div>
@@ -6827,7 +6861,7 @@ function renderPaymentStep(ctx){
       </div>
     </div>`+loyBox;
   const tabBtn=(mm,lbl)=>`<button class="btn ${_payMode===mm?'btn-primary':''}" style="flex:1;justify-content:center;font-size:12px;padding:9px 4px" onclick="setPayMode('${mm}')">${lbl}</button>`;
-  const tabs=`<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">${creditAvail>0?tabBtn('balance',t('payModeBal')):''}${tabBtn('cod',t('payModeCod'))}${tabBtn('full',t('payModeFull'))}${tabBtn('partial',t('payModePartial'))}</div>`;
+  const tabs=`<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">${creditAvail>0?tabBtn('balance',t('payModeBal')):''}${tabBtn('cod',t('payModeCod'))}${tabBtn('full',t('payModeFull'))}${tabBtn('partial',t('payModePartial'))}${(loyOn()&&!window._myLoyOff&&usable>0)?tabBtn('points','★ '+loyName()):''}</div>`;
   let pane='';
   const appGrid=`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">
       ${apps.map(b=>`<button class="btn ${_payApp===b.id?'btn-primary':''}" style="justify-content:center;font-size:12px;padding:10px 4px" onclick="setPayApp('${b.id}')">${esc(b.name)}</button>`).join('')}</div>`;
@@ -6864,6 +6898,18 @@ function renderPaymentStep(ctx){
     pane=`<div style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:14px;padding:14px;text-align:center;color:#14532D">
       <div style="font-size:28px">💵</div><div style="font-weight:800;margin-top:4px">${t('codTitle')}</div>
       <div style="font-size:12.5px;margin-top:5px">${money(effTotal)} ${CUR()} — ${t('codDesc')}</div></div>`;
+  }else if(_payMode==='points'){
+    pane=`<div style="border:1px solid var(--primary);border-radius:14px;padding:13px;background:var(--primary-soft)">
+      <div style="font-weight:800;font-size:13.5px;color:var(--primary-d);display:flex;align-items:center;gap:5px">${svg(I.points,15)} ${t('ptsYouHave')} ${money(myPointsNow())} ${esc(loyName())}</div>
+      <div style="display:flex;gap:6px;margin-top:10px">
+        <input class="inp" id="co_pts" type="number" inputmode="numeric" placeholder="${t('ptsCount')} ${money(usable)})" value="${_payPts||''}" style="flex:1">
+        <button class="btn btn-sm" onclick="useAllPts()">${t('ptsAll')}</button>
+        <button class="btn btn-sm btn-primary" onclick="setPayPts()">${t('ptsApply')}</button>
+        ${_payPts>0?`<button class="btn btn-sm" onclick="clrPayPts()">${t('ptsCancel')}</button>`:''}
+      </div>
+      ${_payPts>0?`<div style="font-size:12px;color:var(--success);font-weight:700;margin-top:8px">${t('ptsDiscount')} ${money(disc)} ${CUR()} (${money(_payPts)} ${esc(loyName())})</div>`:''}
+      <div style="margin-top:10px;font-size:13px">${effTotal<=0?`<span style="color:#15803D;font-weight:700">✓ مغطّى بالكامل بالنقاط</span>`:`<span>المتبقّي يُدفع عند الاستلام: <b>${money(effTotal)} ${CUR()}</b></span>`}</div>
+    </div>`;
   }else{
     const depo=_payMode==='partial'
       ?`<div class="field" style="margin-bottom:12px"><label>${t('depositLabel')}</label><input class="inp" id="co_deposit" type="number" step="any" placeholder="${Math.round(effTotal/2)}"><div class="muted" style="font-size:11.5px;margin-top:4px">${t('depositHint')}</div></div>`
@@ -6880,6 +6926,7 @@ function submitOrder(ctx){
   const ptsUsed=Math.max(0,Math.min(_payPts|0,loyUsable(ctx)));const ptsDisc=ptsUsed*loyRedeemVal();
   const effTotal=Math.max(0,ctx.grandTotal-ptsDisc);
   let payMode=_payMode,deposit=0,appBox=null,payNum='',fromBalance=0;
+  if(payMode==='points')payMode='cod';
   if(payMode==='balance'){
     const creditAvail=Math.max(0,-(Number(window._myBalance)||0));
     fromBalance=Math.min(creditAvail,effTotal);
