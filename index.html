@@ -194,7 +194,7 @@ textarea.inp{resize:vertical;min-height:64px}
 
 /* Modal */
 .overlay{position:fixed;inset:0;background:rgba(16,36,31,.42);backdrop-filter:blur(2px);z-index:60;display:grid;place-items:center;padding:16px;overflow:auto;overscroll-behavior:contain}
-body.modal-lock,body.menu-open{overflow:hidden!important;touch-action:none}
+body.modal-lock,body.menu-open,body.cart-open{overflow:hidden!important;touch-action:none}
 .inapp-notif{position:fixed;top:14px;left:50%;transform:translateX(-50%) translateY(-180%);z-index:9999;background:var(--surface,#fff);color:var(--ink,#0f172a);border:1px solid var(--line,#e2e8f0);border-radius:16px;box-shadow:0 18px 50px rgba(0,0,0,.30);padding:12px 14px;display:flex;gap:11px;align-items:flex-start;width:min(430px,92vw);transition:transform .4s cubic-bezier(.2,.85,.25,1);cursor:pointer}
 .inapp-notif.show{transform:translateX(-50%) translateY(0)}
 .inapp-notif .ic{width:42px;height:42px;border-radius:13px;flex:0 0 auto;display:grid;place-items:center;background:linear-gradient(135deg,#1D4ED8,#3b82f6);color:#fff;box-shadow:0 6px 16px rgba(29,78,216,.35)}
@@ -1176,7 +1176,7 @@ function cloudInit(){
       if(typeof updateRegBadge==='function')updateRegBadge();
       const pend=list.filter(r=>!r.verified);
       const loginReqs=list.filter(r=>r.loginStatus==='pending');
-      if(window._regInit){
+      if(window._regInit&&typeof CUR_USER!=='undefined'&&CUR_USER){
         const newest=pend.length?Math.max.apply(null,pend.map(r=>new Date(r.date||0).getTime())):0;
         const seen=Number(localStorage.getItem('sadaqa_seen_reg')||0);
         if(pend.length&&newest>seen){try{showInAppNotif('🔔 زبون جديد بانتظار التوثيق',pend.length+' زبون بحاجة لمراجعتك في «تسجيلات الزبائن»','regs');}catch(e){}}
@@ -3979,7 +3979,7 @@ function vchPartyName(v){
   if(v.partyType==='supplier'){const s=DB.suppliers.find(x=>x.id===v.partyId);return s?s.name:(v.partyName||'مورد');}
   return v.partyName||'حساب آخر';
 }
-const APP_BUILD='يومية-جديدة · 20/06 #113';
+const APP_BUILD='يومية-جديدة · 20/06 #116';
 let jrnDay=null,jrnBox='',jrnQ='';
 function journalEntries(day,boxId){
   const E=[];const sameDay=d=>(d||'').slice(0,10)===day;
@@ -5225,17 +5225,36 @@ function editOrderInv(id){
     ${rows}
     <div class="field" style="margin-top:10px"><label>الحمل (التوصيل)</label><input class="inp" id="eo_deliv" type="number" step="any" value="${Number(o.delivery)||0}"></div>`,
     actions:[{label:'حفظ',primary:true,icon:I.check,fn:()=>{
+      const oldTotal=Number(o.total)||0;
       let itemsTotal=0;
       (o.items||[]).forEach((l,i)=>{const q=parseFloat(val('eo_q'+i))||0,p=parseFloat(val('eo_p'+i))||0;l.qty=q;l.price=p;itemsTotal+=q*p;});
       const deliv=parseFloat(val('eo_deliv'))||0;o.delivery=deliv;
       const ptsDisc=Number(o.pointsDiscount)||0;
       o.itemsTotal=itemsTotal;o.total=Math.max(0,itemsTotal+deliv-ptsDisc);
-      if(o.payMode==='full')o.deposit=o.total;
-      const paidNow=(o.payMode==='cod')?0:(Number(o.deposit)||0);
-      o.remaining=Math.max(0,o.total-paidNow-(Number(o.fromBalance)||0));
+      const actualPaid=(o.payMode==='cod')?0:(Number(o.deposit)||0);
+      o.remaining=Math.max(0,o.total-actualPaid-(Number(o.fromBalance)||0));
       save();try{cloudSetOrder(o.id,{items:o.items,itemsTotal:o.itemsTotal,delivery:o.delivery,total:o.total,deposit:o.deposit,remaining:o.remaining});}catch(e){}
-      toast('تم تعديل الفاتورة','ok');renderOrders();
+      if(o.customerId&&o.total!==oldTotal){
+        const cred=custCreditOf(o);
+        let msg='🧾 تم تعديل طلبك #'+o.no+': الإجمالي أصبح '+m(o.total)+' (الحمل '+m(o.delivery)+').';
+        if(actualPaid>0)msg+=' دفعت '+m(actualPaid)+'.';
+        if(o.remaining>0){
+          if(cred>0){const cover=Math.min(cred,o.remaining);
+            msg+=' سيُخصم '+m(cover)+' من رصيدك'+(o.remaining>cover?(' والباقي '+m(o.remaining-cover)+' يُدفع عند الاستلام'):'')+'.';
+          }else{msg+=' المتبقّي '+m(o.remaining)+' يُدفع عند الاستلام.';}
+        }else if(o.total<oldTotal){msg+=' لا مبالغ إضافية عليك.';}
+        try{custTxn(o.customerId,msg);}catch(e){}
+      }
+      toast(o.total>oldTotal?('تم التعديل — سُجِّل على الزبون فرق '+m(o.remaining)):'تم تعديل الفاتورة','ok');
+      renderOrders();
     }},{label:'إلغاء',fn:()=>true}]});
+}
+function custCreditOf(o){
+  let bal=0;
+  const c=DB.customers.find(c=>c.phone&&o.phone&&digitsOnly(c.phone)===digitsOnly(o.phone)&&(c.cc||'222')===(o.cc||'222'));
+  if(c)bal=Number(c.balance)||0;
+  else{const r=(DB.registrations||[]).find(r=>r.id===o.customerId||(r.phone&&o.phone&&digitsOnly(r.phone)===digitsOnly(o.phone)));if(r&&r.balance!=null)bal=Number(r.balance)||0;}
+  return Math.max(0,-bal);
 }
 function orderSaleLike(o){
   const items=(o.items||[]).map(l=>({name:l.name,qty:l.qty,price:l.price,total:(Number(l.price)||0)*(Number(l.qty)||0)}));
@@ -6633,8 +6652,8 @@ function updateCartBadge(){
   const n=CART.reduce((a,c)=>a+c.qty,0);
   ['cartCount','cartCountHero'].forEach(id=>{const b=document.getElementById(id);if(b){b.textContent=n;b.style.display=n?'grid':'none';}});
 }
-function openCart(){renderStoreCart();document.getElementById('cartDrawer').classList.add('open');}
-function closeCart(){document.getElementById('cartDrawer').classList.remove('open');}
+function openCart(){renderStoreCart();document.getElementById('cartDrawer').classList.add('open');document.body.classList.add('cart-open');}
+function closeCart(){document.getElementById('cartDrawer').classList.remove('open');document.body.classList.remove('cart-open');}
 function renderStoreCart(){
   const items=document.getElementById('cartItems');const foot=document.getElementById('cartFoot');
   const head=document.querySelector('#cartDrawer .cart-head span');if(head)head.textContent=t('cartTitle');
