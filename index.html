@@ -1212,7 +1212,15 @@ function cloudInit(){
       if(window._cpInit&&typeof CUR_USER!=='undefined'&&CUR_USER){
         const newest=pend.length?Math.max.apply(null,pend.map(p=>new Date(p.date||0).getTime())):0;
         const seen=Number(localStorage.getItem('sadaqa_seen_custpay')||0);
-        if(pend.length&&newest>seen){try{showInAppNotif('💵 دفعة من زبون','زبون أرسل إشعار دفع — راجِعه وأكِّد الاستلام','custpay');}catch(e){}}
+        if(pend.length&&newest>seen){const np=pend.reduce((a,b)=>new Date(b.date||0)>new Date(a.date||0)?b:a);
+          if(np.kind==='withdraw'){try{showInAppNotif('🏧 طلب سحب من زبون',(np.name||'زبون')+' يطلب سحب '+money(np.amount)+' '+CUR()+' — راجِع الطلب','custpay');}catch(e){}}
+          else{try{showInAppNotif('💵 دفعة من زبون','زبون أرسل إشعار دفع — راجِعه وأكِّد الاستلام','custpay');}catch(e){}}}
+        const wdone=list.filter(p=>p.kind==='withdraw'&&p.status==='confirmed'&&p.source==='store');
+        const newestW=wdone.length?Math.max.apply(null,wdone.map(p=>new Date(p.date||0).getTime())):0;
+        const seenW=Number(localStorage.getItem('sadaqa_seen_withdrawdone')||0);
+        if(wdone.length&&newestW>seenW){localStorage.setItem('sadaqa_seen_withdrawdone',String(newestW));
+          const w=wdone.reduce((a,b)=>new Date(b.date||0)>new Date(a.date||0)?b:a);
+          try{showInAppNotif('🏧 سحب نقدي من الصندوق','صُرف '+money(w.amount)+' '+CUR()+' للزبون '+(w.name||'')+(w.app?(' عبر '+w.app):'')+(w.by?(' · بواسطة '+w.by):''),'custpay');}catch(e){}}
       }
       window._cpInit=true;
     }, e=>{});
@@ -2602,23 +2610,39 @@ function newCustomerQuick(){
 }
 function addServiceModal(){
   const svcs=DB.services||[];
-  modal({title:'إضافة خدمة',body:`
+  const pdl=`<datalist id="svcPhDL">${(DB.porters||[]).map(p=>`<option value="${esc(p.phone||'')}">${esc(p.name||'')}</option>`).join('')}</datalist><datalist id="svcNmDL">${(DB.porters||[]).map(p=>`<option value="${esc(p.name||'')}">${esc(p.phone||'')}</option>`).join('')}</datalist>`;
+  modal({title:'إضافة خدمة / حمل',body:`${pdl}
     ${svcs.length?`<div class="svc-pick">${svcs.map(s=>`<button class="svc-btn" onclick="pickService('${s.id}')">${esc(s.name)}${s.price?`<span>${money(s.price)}</span>`:''}</button>`).join('')}</div>`:'<div class="muted" style="font-size:13px">لا خدمات محفوظة. أضِفها من الإعدادات أو اكتب خدمة مخصّصة:</div>'}
     <div style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px">
-      <div class="muted" style="font-size:12px;margin-bottom:8px">أو خدمة مخصّصة:</div>
+      <div class="muted" style="font-size:12px;margin-bottom:8px">أو خدمة / حمل مخصّص:</div>
       <div class="grid2">
-        <div class="field"><label>اسم الخدمة</label><input class="inp" id="svc_name" placeholder="مثال: توصيل"></div>
-        <div class="field"><label>القيمة</label><input class="inp" id="svc_price" type="number" step="any" value="0"></div>
+        <div class="field"><label>اسم الخدمة</label><input class="inp" id="svc_name" placeholder="مثال: الحمل (توصيل)" value="الحمل (توصيل)"></div>
+        <div class="field"><label>القيمة على الزبون</label><input class="inp" id="svc_price" type="number" step="any" value="0"></div>
+      </div>
+      <div style="margin-top:6px;border-top:1px dashed var(--line);padding-top:8px">
+        <div class="muted" style="font-size:11.5px;font-weight:700;margin-bottom:6px">🛻 الحمّال (اختياري — لتظهر في الحمّالين بالمصروفات):</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+          <input class="inp" id="svc_pphone" inputmode="tel" placeholder="رقم الحمّال" list="svcPhDL" style="width:120px" oninput="svcPorterFill('phone')">
+          <input class="inp" id="svc_pname" placeholder="اسم الحمّال" list="svcNmDL" style="flex:1;min-width:100px" oninput="svcPorterFill('name')">
+          <input class="inp" id="svc_pwage" type="number" step="any" placeholder="أجرته" style="width:80px" title="ما تدفعه للحمّال">
+        </div>
       </div>
     </div>`,
-    actions:[{label:'إضافة المخصّصة',primary:true,fn:()=>{const n=val('svc_name').trim();if(!n){toast('اكتب اسم الخدمة','err');return false;}
-      cart.push({id:'svc_'+uid('s'),name:n,unit:'خدمة',price:parseFloat(val('svc_price'))||0,cost:0,qty:1,disc:0,max:1e9,service:true});
-      invRefresh();return true;}},{label:'إغلاق',fn:()=>true}]});
+    actions:[{label:'إضافة',primary:true,fn:()=>{const n=val('svc_name').trim();if(!n){toast('اكتب اسم الخدمة','err');return false;}
+      const price=parseFloat(val('svc_price'))||0;
+      const pname=(val('svc_pname')||'').trim(),pphone=(val('svc_pphone')||'').trim(),pwage=parseFloat(val('svc_pwage'))||0;
+      const line={id:'svc_'+uid('s'),name:n,unit:'خدمة',price,cost:0,qty:1,disc:0,max:1e9,service:true};
+      if(pname||pphone){const pr=findOrCreatePorter(pname,pphone);line.porter={id:pr.id,name:pr.name,phone:pr.phone,wage:pwage};line.cost=pwage;}
+      cart.push(line);invRefresh();return true;}},{label:'إغلاق',fn:()=>true}]});
+}
+function svcPorterFill(which){
+  if(which==='phone'){const d=digitsOnly(val('svc_pphone'));if(!d)return;const p=(DB.porters||[]).find(x=>digitsOnly(x.phone)===d);const nm=document.getElementById('svc_pname');if(p&&nm&&!nm.value)nm.value=p.name||'';}
+  else{const nm=(val('svc_pname')||'').trim();if(!nm)return;const p=(DB.porters||[]).find(x=>(x.name||'').trim()===nm);const ph=document.getElementById('svc_pphone');if(p&&ph&&!ph.value)ph.value=p.phone||'';}
 }
 function pickService(id){const s=(DB.services||[]).find(x=>x.id===id);if(!s)return;
   cart.push({id:'svc_'+uid('s'),name:s.name,unit:'خدمة',price:Number(s.price)||0,cost:0,qty:1,disc:0,max:1e9,service:true});
   closeModal();invRefresh();toast('أُضيفت الخدمة: '+s.name,'ok');}
-function lineCalc(l){const gross=(Number(l.price)||0)*(Number(l.qty)||0);const disc=Math.min(Number(l.disc)||0,gross);const total=gross-disc;const isServ=!!l.service||/حمل|توصيل|livr|transport/i.test(l.name||'');const profit=isServ?0:(total-(Number(l.cost)||0)*(Number(l.qty)||0));return{gross,disc,total,profit};}
+function lineCalc(l){const gross=(Number(l.price)||0)*(Number(l.qty)||0);const disc=Math.min(Number(l.disc)||0,gross);const total=gross-disc;const profit=total-(Number(l.cost)||0)*(Number(l.qty)||0);return{gross,disc,total,profit};}
 function dayName(iso){const d=['الأحد','الإثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];return d[new Date(iso).getDay()];}
 function vInvoice(v){
   const pur=(invMode==='purchase'||invMode==='preturn');const ret=invMode==='sreturn';
@@ -3030,10 +3054,12 @@ function invSave(){
   const sale={id:editing?editing.id:uid('inv'),no,type:isReturn?'return':effType,date:_dDay+'T'+_dTime,
     customerId:cust?cust.id:'',customerName:cust?cust.name:(boxName(saleBox)||'نقدي'),warehouseId:saleWh,warehouseName:invWhName,
     boxId:saleBox,boxName:boxName(saleBox),
-    items:cart.map(l=>{const c=lineCalc(l);return{id:l.id,name:l.name,code:l.code,unit:l.unit,price:l.price,qty:l.qty,disc:l.disc||0,cost:Number(l.cost)||0,total:c.total,service:!!l.service,note:l.note||'',wh:l.service?'':(l.wh||saleWh),warehouseName:l.service?'':whName(l.wh||saleWh)};}),
+    items:cart.map(l=>{const c=lineCalc(l);return{id:l.id,name:l.name,code:l.code,unit:l.unit,price:l.price,qty:l.qty,disc:l.disc||0,cost:Number(l.cost)||0,total:c.total,service:!!l.service,porter:l.porter||null,note:l.note||'',wh:l.service?'':(l.wh||saleWh),warehouseName:l.service?'':whName(l.wh||saleWh)};}),
     subtotal:cart.reduce((a,l)=>a+lineCalc(l).gross,0),discount:cart.reduce((a,l)=>a+lineCalc(l).disc,0),
     total:net,paid:paid,remaining,profit:isReturn?-profit:profit,payments,balanceBefore:balBefore,balanceAfter:balAfter,
     createdBy:editing?(editing.createdBy||editing.editedBy||''):((typeof CUR_USER!=='undefined'&&CUR_USER&&CUR_USER.name)?CUR_USER.name:'')};
+  const _pLine=cart.find(l=>l.porter&&l.porter.id);
+  if(_pLine){sale.porter={id:_pLine.porter.id,name:_pLine.porter.name,phone:_pLine.porter.phone,wage:Number(_pLine.porter.wage)||0};sale.porterCharged=lineCalc(_pLine).total;}
   if(editing){sale.editedBy=(typeof CUR_USER!=='undefined'&&CUR_USER&&CUR_USER.name)?CUR_USER.name:'مستخدم';sale.editedAt=new Date().toISOString();const ix=DB.sales.findIndex(s=>s.id===editing.id);DB.sales[ix]=sale;}
   else DB.sales.push(sale);
   if(cust)cust.balance=balAfter;
@@ -3042,7 +3068,12 @@ function invSave(){
   }else if(isCr){payments.forEach(p=>{const pa=Number(p.amount)||0;if(pa>0)addCash('in',pa,(editing?'تعديل دفعة فاتورة #':'دفعة فاتورة آجلة #')+no,sale.id,p.box||saleBox,sale.date);});}
   else if(paid>0)addCash('in',paid,(editing?'تعديل فاتورة #':'بيع #')+no,sale.id,saleBox,sale.date);
   save();_aff.forEach(p=>cloudPutProduct(p));
-  if(cust&&!isReturn){const _lk=custReg(cust);if(_lk){const _prodBase=Math.max(0,cart.filter(l=>!l.service&&!/حمل|توصيل|livr|transport/i.test(l.name||'')).reduce((a,l)=>a+(lineCalc(l).total||0),0));const _earned=loyEarn(_lk,_prodBase,'كسب من فاتورة #'+no);custTxn(_lk,'فاتورة #'+no+' بمبلغ '+m(net)+(_earned?(' · +'+_earned+' '+loyName()):''));if(_earned>0)toast('مُنح الزبون '+_earned+' '+loyName(),'ok');}}
+  if(cust){const _lk=custReg(cust);if(_lk){
+    let _earned=0;
+    if(!isReturn){const _prodBase=Math.max(0,cart.filter(l=>!l.service&&!/حمل|توصيل|livr|transport/i.test(l.name||'')).reduce((a,l)=>a+(lineCalc(l).total||0),0));_earned=loyEarn(_lk,_prodBase,'كسب من فاتورة #'+no);if(_earned>0)toast('مُنح الزبون '+_earned+' '+loyName(),'ok');}
+    const _head=isReturn?('↩️ مرتجع بيع #'+no):(editing?('🧾 تم تعديل فاتورتك #'+no):('🧾 فاتورة #'+no));
+    custTxn(_lk,_head+' بمبلغ '+m(net)+(_earned?(' · +'+_earned+' '+loyName()):'')+' · رصيدك: '+balText(balAfter));
+  }}
   if(cust)syncCustToReg(cust);
   editSaleId='';cart=[];saleCustomer='';_pickedId='';invPayments=[];invMin=false;
   toast(editing?('تم تعديل الفاتورة #'+no):(isReturn?('تم تسجيل مرتجع البيع #'+no+' — أُعيدت المواد للمخزن'):('تم حفظ الفاتورة #'+no)),'ok');
@@ -3051,7 +3082,7 @@ function invSave(){
 function editSale(id){
   const s=DB.sales.find(x=>x.id===id);if(!s){toast('الفاتورة غير موجودة','err');return;}
   closeModal();
-  cart=(s.items||[]).map(it=>({id:it.id,name:it.name,code:it.code,unit:it.unit,price:it.price,qty:Number(it.qty)||0,disc:Number(it.disc)||0,cost:(it.cost!=null?Number(it.cost):((findProd(it)||{}).wholesale||0))||0,note:it.note||'',service:!!it.service,wh:it.service?'':(it.wh||whIdByName(it.warehouseName)||s.warehouseId||defWh()),max:1e9}));
+  cart=(s.items||[]).map(it=>({id:it.id,name:it.name,code:it.code,unit:it.unit,price:it.price,qty:Number(it.qty)||0,disc:Number(it.disc)||0,cost:(it.cost!=null?Number(it.cost):((findProd(it)||{}).wholesale||0))||0,note:it.note||'',service:!!it.service,porter:it.porter||null,wh:it.service?'':(it.wh||whIdByName(it.warehouseName)||s.warehouseId||defWh()),max:1e9}));
   saleCustomer=s.customerId||'';invType=s.type||'cash';
   saleWh=(s.warehouseId&&(DB.warehouses||[]).some(w=>w.id===s.warehouseId))?s.warehouseId:defWh();
   saleBox=(s.boxId&&boxes().some(b=>b.id===s.boxId))?s.boxId:defBox();
@@ -3798,11 +3829,42 @@ function customerStatement(id){
     </div>`,
     actions:[
       {label:'تسجيل دفعة',primary:true,fn:()=>{collectPayment(id);return true;}},
+      {label:'صرف / سحب للزبون',icon:I.cash,fn:()=>{payoutCustomer(id);return true;}},
       loyOn()?{label:loyName()+' ('+money(loyPoints(loyKeyCust(c)))+')',icon:I.wallet,fn:()=>{loyManage(loyKeyCust(c),c.name);return false;}}:null,
       {label:'طباعة',icon:I.print,fn:()=>{printEl('stmt');return false;}},
       {label:'تذكير واتساب',icon:I.wa,fn:()=>{waCustomerBalance(id);return false;}},
       {label:'إغلاق',fn:()=>true}
     ].filter(Boolean)});
+}
+function payoutCustomer(id){
+  const c=DB.customers.find(x=>x.id===id);if(!c)return;
+  const bal=c.balance||0;const credit=Math.max(0,-bal);
+  modal({title:'صرف / سحب للزبون '+esc(c.name),body:`
+    <p class="muted" style="margin-bottom:12px">${credit>0?`رصيده الدائن المتاح للسحب: <b style="color:var(--success)">${m(credit)}</b>`:bal>0?`عليه دين: <b style="color:var(--danger)">${m(bal)}</b> — السحب سيزيد دينه`:'لا رصيد دائن له حالياً'}</p>
+    <div class="field"><label>المبلغ المصروف له (${CUR()})</label><input class="inp" id="po_amt" type="number" step="any" value="${credit>0?credit:''}"></div>
+    <div class="field" style="margin-top:12px"><label>من (صندوق / تطبيق بنكي)</label><select class="inp" id="po_box">${boxes().map(bx=>`<option value="${bx.id}">${esc(bx.name)}${bx.type==='app'?' (تطبيق)':bx.type==='bank'?' (بنك)':''}</option>`).join('')}</select></div>
+    <div class="field" style="margin-top:12px"><label>ملاحظة</label><input class="inp" id="po_note" placeholder="مثال: سحب رصيد من حسابه"></div>
+    <p class="muted" style="font-size:11.5px;margin-top:8px">يُخصم المبلغ من رصيده الدائن (وإن تجاوزه يُسجَّل ديناً عليه)، ويُصرف نقداً من الصندوق/التطبيق.</p>`,
+    actions:[{label:'تأكيد الصرف',primary:true,icon:I.cash,fn:()=>{
+      const amt=parseFloat(val('po_amt'))||0;if(amt<=0){toast('أدخل مبلغاً صحيحاً','err');return false;}
+      const box=val('po_box');const note=(val('po_note')||'').trim();
+      const _by=(typeof CUR_USER!=='undefined'&&CUR_USER&&CUR_USER.name)?CUR_USER.name:'';
+      c.balance=(c.balance||0)+amt;
+      const vno=DB.seq.voucher++;const vid=uid('vch');
+      DB.vouchers.push({id:vid,no:vno,kind:'payment',partyType:'customer',partyId:id,partyName:c.name,amount:amt,box,date:todayISO()+'T'+new Date().toISOString().slice(11),note:note||'سحب رصيد للزبون',createdBy:_by});
+      DB.custPays.push({id:uid('cp'),custId:id,amount:-amt,date:todayISO(),note:note||'سحب رصيد',box,voucher:vid});
+      addCash('out',amt,'إيصال دفع #'+vno+' — سحب رصيد للزبون '+c.name+(note?(' — '+note):''),vid,box);
+      const _lk=custReg(c);
+      try{syncCustToReg(c);if(_lk)custTxn(_lk,'💵 صرف لك المتجر '+m(amt)+' من رصيدك · رصيدك الآن: '+balText(c.balance));}catch(e){}
+      try{const cpRec={id:uid('cpr'),kind:'withdraw',customerId:_lk,name:c.name,cc:c.cc||'222',phone:c.phone||'',amount:amt,app:boxName(box),box,by:_by,proof:'',note:note||'سحب نقدي من المتجر',date:new Date().toISOString(),status:'confirmed',source:'store'};
+        cloudAddCustPayment(cpRec).catch(()=>{});window._custPayReqs=window._custPayReqs||[];window._custPayReqs.unshift(cpRec);if(typeof updateCustPayBadge==='function')updateCustPayBadge();}catch(e){}
+      save();toast(_lk?'تم الصرف وإشعار الزبون':'تم الصرف','ok');render();
+      const _txt='🏧 *سحب نقدي من الصندوق*\n'+(DB.settings.name||'مؤسسة الصداقة')+'\n——————\nالزبون: '+c.name+(c.phone?(' ('+c.phone+')'):'')+'\nالمبلغ المصروف: '+m(amt)+'\nمن: '+boxName(box)+'\nالمنفّذ: '+(_by||'—')+'\nرصيد الزبون الآن: '+balText(c.balance)+'\nالتاريخ: '+fmtDateTime(new Date().toISOString());
+      closeModal();
+      setTimeout(()=>{modal({title:'تم الصرف ✅',size:'sm',body:`<p style="font-size:13.5px;line-height:1.8">صُرف <b>${m(amt)}</b> للزبون <b>${esc(c.name)}</b> من <b>${esc(boxName(box))}</b>.<br>هل تريد إرسال المعاملة للمدير عبر واتساب؟</p>`,
+        actions:[{label:'📤 إرسال للمدير (واتساب)',primary:true,icon:I.wa,fn:()=>{const mw=digitsOnly(DB.settings.managerWa||DB.settings.whatsapp||'');if(!mw){toast('أضف رقم واتساب المدير في الإعدادات','err');return false;}waOpen(mw,_txt);return true;}},{label:'إغلاق',fn:()=>true}]});},150);
+      return false;
+    }},{label:'إلغاء',fn:()=>true}]});
 }
 function collectPayment(id){
   const c=DB.customers.find(x=>x.id===id);
@@ -3983,7 +4045,7 @@ function vchPartyName(v){
   if(v.partyType==='supplier'){const s=DB.suppliers.find(x=>x.id===v.partyId);return s?s.name:(v.partyName||'مورد');}
   return v.partyName||'حساب آخر';
 }
-const APP_BUILD='يومية-جديدة · 20/06 #124';
+const APP_BUILD='يومية-جديدة · 20/06 #130';
 let jrnDay=null,jrnBox='',jrnQ='';
 function journalEntries(day,boxId){
   const E=[];const sameDay=d=>(d||'').slice(0,10)===day;
@@ -4016,7 +4078,7 @@ function journalEntries(day,boxId){
     E.push({date:x.date,editDate:'',by:'',editor:'',no:'',amount:x.amount,cash:x.amount,dir:'out',box:bxid,debit:'مصروفات ('+x.type+')',credit:boxName(bxid),unpaid:false,kind:'expense',ref:'',st:'مصروف: '+x.type});});
   (DB.porterPays||[]).forEach(pp=>{const bxid=pp.box||defBox();if(!sameDay(pp.date)||!inBox(bxid))return;
     const pr=(DB.porters||[]).find(x=>x.id===pp.porterId);
-    E.push({date:pp.date,editDate:'',by:'',editor:'',no:'',amount:pp.amount,cash:Number(pp.amount)||0,dir:'out',box:bxid,debit:'أجور حمل',credit:boxName(bxid),unpaid:false,kind:'porterpay',ref:'',st:'أجور حمل — '+((pr&&pr.name)||'')});});
+    E.push({date:pp.date,editDate:'',by:'',editor:'',no:'',amount:pp.amount,cash:Number(pp.amount)||0,dir:'out',box:bxid,debit:'أجور حمل',credit:boxName(bxid),unpaid:false,kind:'porterpay',ref:pp.id,st:'أجور حمل — '+((pr&&pr.name)||'')});});
   // الفواتير المحذوفة تبقى ظاهرة كسجلّ محاسبي (لا تُحتسب في المجاميع)
   (DB.trash||[]).forEach(t=>{const s=t&&t.data;if(!s||!sameDay(s.date))return;const bxid=s.boxId||defBox();
     if(t.kind==='sale'){const isCr=s.type==='credit';const ret=s.type==='return';
@@ -4085,7 +4147,8 @@ function renderJournalTable(){
           r2=(e.dir==='in'&&!toB1)?e.cash:0, p2=(e.dir==='out'&&!toB1)?e.cash:0;
     if(!e.voided){s1r+=r1;s1p+=p1;s2r+=r2;s2p+=p2;sDA+=(e.amount||0);sCA+=(e.amount||0);}
     const editable=!e.voided&&(e.kind==='sale'||e.kind==='salepay'||e.kind==='purchase'||e.kind==='voucher');
-    return `<tr style="background:var(--surface)${e.voided?';opacity:.55':''}${editable?';cursor:pointer':''}" ${editable?`ondblclick="journalEdit('${e.kind}','${e.ref}')" title="انقر نقرتين للتعديل"`:''}>
+    const isPP=!e.voided&&e.kind==='porterpay'&&e.ref;
+    return `<tr style="background:var(--surface)${e.voided?';opacity:.55':''}${(editable||isPP)?';cursor:pointer':''}" ${editable?`ondblclick="journalEdit('${e.kind}','${e.ref}')" title="انقر نقرتين للتعديل"`:(isPP?`ondblclick="delPorterPay('${e.ref}')" title="انقر نقرتين لحذف دفعة الحمّال"`:'')}>
       ${cell(r1,'amt-in')}${cell(p1,'amt-out')}${cell(r2,'amt-in')}${cell(p2,'amt-out')}
       <td style="border:1px solid var(--line);text-align:center;white-space:nowrap;color:var(--ink);font-weight:600;padding:4px 7px${e.voided?';text-decoration:line-through':''}">${esc(e.debit||'—')}</td>
       <td style="border:1px solid var(--line);text-align:center;white-space:nowrap;color:var(--ink);font-weight:600;padding:4px 7px${e.voided?';text-decoration:line-through':''}">${esc(e.credit||'—')}</td>
@@ -5145,7 +5208,11 @@ function assignPorter(oid){
   renderOrders();toast('تم تعيين الحمّال «'+p.name+'» وأُضيف لقائمة الحملة','ok');
 }
 function clearPorter(oid){const o=(DB.orders||[]).find(x=>x.id===oid);if(!o)return;o.porter=null;save();try{cloudSetOrder(o.id,{porter:null});}catch(e){}renderOrders();}
-function porterJobs(pid){return (DB.orders||[]).filter(o=>o.porter&&o.porter.id===pid).map(o=>({no:o.no,date:o.date,wage:Number(o.porter.wage)||0,charged:Number(o.delivery)||0}));}
+function porterJobs(pid){
+  const a=(DB.orders||[]).filter(o=>o.porter&&o.porter.id===pid).map(o=>({no:o.no,date:o.date,wage:Number(o.porter.wage)||0,charged:Number(o.delivery)||0}));
+  const b=(DB.sales||[]).filter(s=>s.porter&&s.porter.id===pid).map(s=>({no:'بيع #'+s.no,date:s.date,wage:Number(s.porter.wage)||0,charged:Number(s.porterCharged)||0}));
+  return a.concat(b);
+}
 function porterPaidTotal(pid){return (DB.porterPays||[]).filter(x=>x.porterId===pid).reduce((a,x)=>a+(Number(x.amount)||0),0);}
 function porterDue(pid){return Math.max(0,porterJobs(pid).reduce((a,j)=>a+j.wage,0)-porterPaidTotal(pid));}
 function isToday(d){try{return new Date(d).toDateString()===new Date().toDateString();}catch(e){return false;}}
@@ -5153,7 +5220,7 @@ function porterDueToday(pid){const w=porterJobs(pid).filter(j=>isToday(j.date)).
 function vPorters(v){
   const ps=(DB.porters||[]).slice();
   const todayWage=ps.reduce((a,p)=>a+porterJobs(p.id).filter(j=>isToday(j.date)).reduce((s,j)=>s+j.wage,0),0);
-  const todayCharged=(DB.orders||[]).filter(o=>o.porter&&isToday(o.date)).reduce((a,o)=>a+(Number(o.delivery)||0),0);
+  const todayCharged=ps.reduce((a,p)=>a+porterJobs(p.id).filter(j=>isToday(j.date)).reduce((s,j)=>s+j.charged,0),0);
   const totalDue=ps.reduce((a,p)=>a+porterDue(p.id),0);
   v.innerHTML=`
     <div class="cards3" style="margin-bottom:14px">
@@ -5190,10 +5257,21 @@ function payPorter(pid){
     actions:[{label:'تسجيل الدفع',primary:true,icon:I.cash,fn:()=>{
       const amt=parseFloat(val('ppay_amt'))||0;if(amt<=0){toast('أدخل مبلغاً صحيحاً','err');return false;}
       const box=val('ppay_box')||defBox();
-      DB.porterPays=DB.porterPays||[];DB.porterPays.push({id:uid('pp'),porterId:pid,amount:amt,box,date:new Date().toISOString(),note:'دفع مستحقّ حمل'});
-      try{addCash('out',amt,'أجور حمل — '+p.name,'',box);}catch(e){}
+      const ppid=uid('pp');
+      DB.porterPays=DB.porterPays||[];DB.porterPays.push({id:ppid,porterId:pid,amount:amt,box,date:new Date().toISOString(),note:'دفع مستحقّ حمل'});
+      try{addCash('out',amt,'أجور حمل — '+p.name,ppid,box);}catch(e){}
       save();render();toast('دُفع '+m(amt)+' للحمّال '+p.name+' من '+boxName(box),'ok');return true;
     }},{label:'إلغاء',fn:()=>true}]});
+}
+function delPorterPay(ppid,pid){
+  const pp=(DB.porterPays||[]).find(x=>x.id===ppid);if(!pp)return;
+  confirmDlg('حذف هذه الدفعة؟','سيُلغى الصرف ويُعاد المبلغ ('+m(pp.amount)+') إلى '+boxName(pp.box||defBox())+'، ويعود المستحقّ كما كان.',()=>{
+    DB.cash=(DB.cash||[]).filter(c=>c.ref!==ppid);
+    DB.porterPays=(DB.porterPays||[]).filter(x=>x.id!==ppid);
+    save();render();toast('حُذفت الدفعة','ok');
+    if(pid){const op=(DB.porters||[]).find(x=>x.id===pid);if(op){closeModal();setTimeout(()=>porterStatement(pid),120);}}
+    return true;
+  });
 }
 function porterStatement(pid){
   const p=(DB.porters||[]).find(x=>x.id===pid);if(!p)return;const jobs=porterJobs(pid).slice().sort((a,b)=>new Date(b.date)-new Date(a.date));
@@ -5205,8 +5283,8 @@ function porterStatement(pid){
     <table style="width:100%;border-collapse:collapse;margin:6px 0 14px"><thead><tr style="background:var(--surface-2)"><th style="${cell}">التاريخ</th><th style="${cell}">طلب</th><th style="${cell}">أجرته</th><th style="${cell}">حُصّل</th></tr></thead>
       <tbody>${jobs.length?jobs.map(j=>`<tr><td style="${cell}">${fmtDate(j.date)}</td><td style="${cell};text-align:center">#${esc(j.no)}</td><td style="${cell};text-align:center">${money(j.wage)}</td><td style="${cell};text-align:center">${money(j.charged)}</td></tr>`).join(''):`<tr><td colspan="4" style="${cell};text-align:center" class="muted">لا عمليات</td></tr>`}</tbody></table>
     <b style="font-size:13px">المدفوعات له</b>
-    <table style="width:100%;border-collapse:collapse;margin-top:6px"><thead><tr style="background:var(--surface-2)"><th style="${cell}">التاريخ</th><th style="${cell}">المبلغ</th></tr></thead>
-      <tbody>${pays.length?pays.map(x=>`<tr><td style="${cell}">${fmtDate(x.date)}</td><td style="${cell};text-align:center">${money(x.amount)}</td></tr>`).join(''):`<tr><td colspan="2" style="${cell};text-align:center" class="muted">لا مدفوعات</td></tr>`}</tbody></table>`,
+    <table style="width:100%;border-collapse:collapse;margin-top:6px"><thead><tr style="background:var(--surface-2)"><th style="${cell}">التاريخ</th><th style="${cell}">المبلغ</th><th style="${cell}">من</th><th style="${cell}"></th></tr></thead>
+      <tbody>${pays.length?pays.map(x=>`<tr><td style="${cell}">${fmtDate(x.date)}</td><td style="${cell};text-align:center">${money(x.amount)}</td><td style="${cell};text-align:center">${esc(boxName(x.box||defBox()))}</td><td style="${cell};text-align:center"><button class="btn btn-icon btn-ghost btn-sm" title="حذف الدفعة" onclick="delPorterPay('${x.id}','${pid}')">${svg(I.trash,14)}</button></td></tr>`).join(''):`<tr><td colspan="4" style="${cell};text-align:center" class="muted">لا مدفوعات</td></tr>`}</tbody></table>`,
     actions:[{label:porterDue(pid)>0?('دفع المستحقّ '+m(porterDue(pid))):'إغلاق',primary:porterDue(pid)>0,fn:()=>{if(porterDue(pid)>0){closeModal();setTimeout(()=>payPorter(pid),120);return false;}return true;}},{label:'إغلاق',fn:()=>true}]});
 }
 function cancelOrderStore(id){
@@ -5635,6 +5713,7 @@ function vSettings(v){
     <div style="padding:18px"><div class="grid2">
       <div class="field"><label>العملة</label><input class="inp" id="set_cur" value="${esc(CUR())}"></div>
       <div class="field"><label>رقم واتساب (مع رمز الدولة، بدون +)</label><input class="inp" id="set_wa" placeholder="مثال: 213XXXXXXXXX" value="${esc(DB.settings.whatsapp||'')}"></div>
+      <div class="field"><label>رقم واتساب المدير (لإشعارات السحب/الصرف)</label><input class="inp" id="set_managerwa" placeholder="مثال: 222XXXXXXXX" value="${esc(DB.settings.managerWa||'')}"></div>
       <div class="field"><label>العلامات التجارية (افصل بفاصلة)</label><input class="inp" id="set_brands" value="${esc((DB.settings.brands||[]).join('، '))}"></div>
       <div class="field"><label>رمز الدخول السريع (مدير)</label><input class="inp" id="set_pin" inputmode="numeric" placeholder="مثال: 1234" value="${esc(DB.settings.quickPin||'')}"></div>
       <div class="field"><label>رقم الدفع الموحّد (تطبيقات الدفع)</label><input class="inp" id="set_paynum" inputmode="numeric" placeholder="مثال: 20108565" value="${esc(DB.settings.payNumber||'20108565')}"></div>
@@ -5777,6 +5856,7 @@ function saveSettings(){
   DB.settings.currency=val('set_cur').trim()||'د.ع';
   const _sc=document.getElementById('set_cash');if(_sc)DB.settings.cashStart=parseFloat(_sc.value)||0;
   DB.settings.whatsapp=val('set_wa').trim();
+  DB.settings.managerWa=val('set_managerwa').trim();
   DB.settings.waBusiness=!!(document.getElementById('set_wabiz')||{}).checked;
   DB.settings.brands=val('set_brands').split(/[،,]/).map(s=>s.trim()).filter(Boolean);
   const _pin=document.getElementById('set_pin');if(_pin)DB.settings.quickPin=_pin.value.trim();
