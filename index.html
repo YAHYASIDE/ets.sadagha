@@ -3913,29 +3913,52 @@ function cpSelApp(id){_cpApp=id;(payApps()||[]).forEach(a=>{const el=document.ge
 function payWithdrawSheet(prefill){
   const v=getVisitor();if(!v||!v.id){toast('سجّل حسابك أولاً','err');visitorRegister();return;}
   if(window._acctBlocked){toast('حسابك محظور — تواصل مع المتجر.','err');return;}
-  _cpApp='';
+  _cpApp='cash';window._wdMode='cash';
   const apps=(typeof payApps==='function')?payApps():[];
-  modal({title:'سحب رصيد',size:'sm',body:`
-    <p class="muted" style="font-size:12.5px;margin-bottom:10px">اطلب سحب مبلغ من رصيدك. سيراجع المتجر طلبك ويصرف لك المبلغ ثم يُحدّث رصيدك.</p>
-    <div class="field"><label>المبلغ المطلوب سحبه (${CUR()})</label><input class="inp" id="wd_amt" type="number" inputmode="numeric" placeholder="المبلغ" value="${prefill>0?prefill:''}"></div>
-    ${apps.length?`<div class="field" style="margin-top:10px"><label>طريقة الاستلام (اختياري)</label>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
-        ${apps.map(a=>`<button type="button" class="btn" id="wdapp_${a.id}" style="justify-content:center;font-size:12px;padding:9px 4px" onclick="wdSelApp('${a.id}')">${esc(a.name)}</button>`).join('')}
-      </div></div>`:''}
+  const bal=Number(window._myBalance)||0;const cred=bal<0,owe=bal>0;
+  const grad=cred?'linear-gradient(135deg,#15803d,#166534)':owe?'linear-gradient(135deg,#dc2626,#b91c1c)':'linear-gradient(135deg,#475569,#334155)';
+  modal({title:'سحب أموال',size:'sm',body:`
+    <div style="background:${grad};color:#fff;border-radius:16px;padding:16px;text-align:center;margin-bottom:14px">
+      <div style="font-size:12.5px;opacity:.92;font-weight:700">${cred?'رصيدك المتاح للسحب':owe?'رصيدك الحالي':'رصيدك'}</div>
+      <div style="font-size:28px;font-weight:800;margin:3px 0">${money(Math.abs(bal))} <span style="font-size:13px">${CUR()}</span></div>
+      <div style="font-size:12px;font-weight:700;opacity:.95">${cred?'✓ لك رصيد دائن — يمكنك سحبه':owe?'عليك دين':'مُسوّى'}</div>
+    </div>
+    <div class="field"><label>المبلغ الذي تريد سحبه (${CUR()})</label><input class="inp" id="wd_amt" type="number" inputmode="numeric" placeholder="المبلغ" value="${prefill>0?prefill:''}"></div>
+    <div class="field" style="margin-top:12px"><label>وسيلة استلام السحب</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px">
+        <button type="button" class="btn btn-primary" id="wdm_cash" style="justify-content:center;padding:13px;font-weight:800;font-size:13.5px" onclick="wdSetMode('cash')">💵 نقداً</button>
+        <button type="button" class="btn" id="wdm_app" style="justify-content:center;padding:13px;font-weight:800;font-size:13.5px" onclick="wdSetMode('app')">🏦 تطبيق بنكي</button>
+      </div>
+      <div id="wd_apps" style="display:none;margin-top:10px">
+        <div class="muted" style="font-size:11.5px;margin-bottom:6px">اختر التطبيق الذي تستلم عليه:</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+          ${apps.length?apps.map(a=>`<button type="button" class="btn" id="wdapp_${a.id}" style="justify-content:center;font-size:12px;padding:9px 4px" onclick="wdSelApp('${a.id}')">${esc(a.name)}</button>`).join(''):'<div class="muted" style="font-size:12px;grid-column:1/-1">لا تطبيقات مضبوطة</div>'}
+        </div>
+      </div>
+      <div class="muted" style="font-size:11px;margin-top:8px">«نقداً» = تأتي إلى المتجر وتستلم المبلغ من الصندوق.</div></div>
     <div class="field" style="margin-top:10px"><label>ملاحظة / رقم الاستلام (اختياري)</label><input class="inp" id="wd_note" placeholder="مثال: حوّل إلى رقمي ..."></div>`,
-    actions:[{label:'إرسال طلب السحب',primary:true,icon:I.check,fn:()=>submitCustWithdraw()},{label:'إلغاء',fn:()=>true}]});
+    actions:[{label:'سحب الأموال',primary:true,icon:I.check,fn:()=>submitCustWithdraw()},{label:'إلغاء',fn:()=>true}]});
 }
-function wdSelApp(id){_cpApp=id;(payApps()||[]).forEach(a=>{const el=document.getElementById('wdapp_'+a.id);if(el)el.className='btn'+(a.id===id?' btn-primary':'');});}
+function wdSetMode(mode){window._wdMode=mode;
+  const cb=document.getElementById('wdm_cash'),ab=document.getElementById('wdm_app'),box=document.getElementById('wd_apps');
+  if(cb)cb.className='btn'+(mode==='cash'?' btn-primary':'');
+  if(ab)ab.className='btn'+(mode==='app'?' btn-primary':'');
+  if(box)box.style.display=(mode==='app')?'block':'none';
+  if(mode==='cash')_cpApp='cash';else _cpApp='';
+}
+function wdSelApp(id){_cpApp=id;window._wdMode='app';document.querySelectorAll('[id^="wdapp_"]').forEach(el=>{el.className='btn';});const sel=document.getElementById('wdapp_'+id);if(sel)sel.className='btn btn-primary';}
 function submitCustWithdraw(){
   if(window._acctBlocked){toast('حسابك محظور — تواصل مع المتجر.','err');return false;}
   const v=getVisitor()||{};const amt=parseFloat(val('wd_amt'))||0;
   if(amt<=0){toast('أدخل مبلغاً صحيحاً','err');return false;}
-  const appBox=boxes().find(b=>b.id===_cpApp);
+  const isCash=(window._wdMode!=='app');
+  if(!isCash&&!_cpApp){toast('اختر التطبيق البنكي للاستلام','err');return false;}
+  const appBox=isCash?null:boxes().find(b=>b.id===_cpApp);
   const p={id:uid('cpr'),kind:'withdraw',customerId:v.id,name:v.name||'',cc:v.cc||'222',phone:v.phone||'',amount:amt,
-    app:appBox?appBox.name:'',box:_cpApp||'',proof:'',note:(val('wd_note')||'').trim(),date:new Date().toISOString(),status:'pending'};
+    app:isCash?'نقداً (من المتجر)':(appBox?appBox.name:''),box:isCash?'':(_cpApp||''),method:isCash?'cash':'app',proof:'',note:(val('wd_note')||'').trim(),date:new Date().toISOString(),status:'pending'};
   cloudAddCustPayment(p).then(()=>{}).catch(()=>{});
   closeModal();
-  try{showInAppNotif('✅ تم إرسال طلب السحب','سيراجع المتجر طلبك ويصرف لك المبلغ.','statement');}catch(e){}
+  try{showInAppNotif('✅ تم إرسال طلب السحب',isCash?'تعال إلى المتجر لاستلام المبلغ نقداً بعد موافقة المتجر.':'سيراجع المتجر طلبك ويصرف لك المبلغ.','statement');}catch(e){}
   toast('أُرسل طلب السحب — بانتظار موافقة المتجر','ok');return false;
 }
 function cpPickProof(inp){const fs=inp.files?Array.from(inp.files):[];if(!fs.length)return;
@@ -4045,7 +4068,7 @@ function vchPartyName(v){
   if(v.partyType==='supplier'){const s=DB.suppliers.find(x=>x.id===v.partyId);return s?s.name:(v.partyName||'مورد');}
   return v.partyName||'حساب آخر';
 }
-const APP_BUILD='يومية-جديدة · 20/06 #130';
+const APP_BUILD='يومية-جديدة · 20/06 #132';
 let jrnDay=null,jrnBox='',jrnQ='';
 function journalEntries(day,boxId){
   const E=[];const sameDay=d=>(d||'').slice(0,10)===day;
@@ -7867,6 +7890,7 @@ function openAccountSheet(){
     <div style="display:flex;flex-direction:column;gap:10px">
       <button class="btn btn-primary" style="justify-content:center" onclick="closeModal();visitorRegister()">${svg(I.people,16)} ${reg?t('accMy'):t('accNoAccount')}</button>
       ${reg?`<button class="btn" style="justify-content:center" onclick="closeModal();myAccountStatement()">${svg(I.report,16)} ${t('accStmtBtn')}</button>`:''}
+      ${reg?`<button class="btn" style="justify-content:center" onclick="closeModal();payWithdrawSheet()">${svg(I.cash||I.wallet,16)} 💵 سحب نقداً من رصيدي</button>`:''}
       ${reg&&myLoyOn()?`<div style="background:linear-gradient(135deg,var(--primary),var(--primary-d));color:#fff;border-radius:14px;padding:14px;text-align:center">
         <div style="font-size:12px;opacity:.95;display:flex;align-items:center;justify-content:center;gap:5px">${svg(I.points,15)} ${t('ptsBalance')} ${esc(loyName())}</div>
         <div id="myLoyPts" style="font-size:30px;font-weight:800;line-height:1.1">${money(myPointsNow())}</div>
