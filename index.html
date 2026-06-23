@@ -3,7 +3,50 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>مؤسسة الصداقة للتجارة العامة — نظام الإدارة</title>
+<title>ETS SADAGHA | مؤسسة الصداقة للتجارة العامة — متجر مواد البناء بموريتانيا</title>
+<meta name="description" content="ETS SADAGHA — مؤسسة الصداقة للتجارة العامة. متجر إلكتروني لبيع مواد البناء (إسمنت، حديد، طوب) والأدوات بأسعار الجملة في موريتانيا. اطلب أونلاين مع التوصيل. ETS SADAGHA pour le commerce général.">
+<meta name="keywords" content="ETS SADAGHA, ETS SADAGA, مؤسسة الصداقة, الصداقة للتجارة العامة, مواد بناء موريتانيا, إسمنت, حديد تسليح, متجر مواد بناء, نواكشوط, commerce général Mauritanie, matériaux de construction">
+<meta name="author" content="ETS SADAGHA">
+<meta name="robots" content="index, follow">
+<link rel="canonical" href="https://etssadagha.com/">
+<meta name="theme-color" content="#1d4ed8">
+<meta name="language" content="Arabic">
+<meta name="geo.region" content="MR">
+<meta name="geo.placename" content="Mauritania">
+<!-- Open Graph (للمشاركة على فيسبوك/واتساب) -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ETS SADAGHA — مؤسسة الصداقة">
+<meta property="og:title" content="ETS SADAGHA | مؤسسة الصداقة للتجارة العامة">
+<meta property="og:description" content="متجر مواد البناء والأدوات بأسعار الجملة في موريتانيا. اطلب أونلاين مع التوصيل.">
+<meta property="og:url" content="https://etssadagha.com/">
+<meta property="og:image" content="https://etssadagha.com/preview.png">
+<meta property="og:locale" content="ar_AR">
+<meta property="og:locale:alternate" content="fr_FR">
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="ETS SADAGHA | مؤسسة الصداقة للتجارة العامة">
+<meta name="twitter:description" content="متجر مواد البناء والأدوات بأسعار الجملة في موريتانيا.">
+<meta name="twitter:image" content="https://etssadagha.com/preview.png">
+<!-- بيانات منظّمة: نشاط تجاري/متجر (تساعد Google على فهم أنه متجر) -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Store",
+  "name": "ETS SADAGHA — مؤسسة الصداقة للتجارة العامة",
+  "alternateName": ["ETS SADAGA", "مؤسسة الصداقة", "ETS SADAGHA pour le commerce général"],
+  "description": "متجر مواد البناء والأدوات بأسعار الجملة في موريتانيا.",
+  "url": "https://etssadagha.com/",
+  "image": "https://etssadagha.com/preview.png",
+  "priceRange": "$$",
+  "currenciesAccepted": "MRU",
+  "address": {
+    "@type": "PostalAddress",
+    "addressCountry": "MR",
+    "addressLocality": "Mauritania"
+  },
+  "areaServed": "MR"
+}
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
@@ -6937,7 +6980,23 @@ function renderStoreCart(){
       <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span class="muted">${t('deliveryFee')}</span><b>${m(deliv)}</b></div>
       <div style="display:flex;justify-content:space-between;border-top:1px dashed var(--line);padding-top:7px"><b>${t('total')}</b><b style="color:var(--primary-d);font-size:15.5px">${m(grand)}</b></div>
     </div>
-    <button class="store-cta" style="background:linear-gradient(135deg,#16a34a,#22c55e);font-size:15px;padding:13px" onclick="checkoutWhatsApp()">✅ إتمام الشراء</button>
+    ${(()=>{const st=(typeof orderEligibility==='function')?orderEligibility():'ok';
+      if(st==='ok')return `<button class="store-cta" style="background:linear-gradient(135deg,#16a34a,#22c55e);font-size:15px;padding:13px" onclick="checkoutWhatsApp()">✅ إتمام الشراء</button>`;
+      if(st==='blocked')return `<div style="background:#FEE2E2;color:#B91C1C;border-radius:12px;padding:13px;text-align:center;font-weight:700;font-size:13px;line-height:1.7">⛔ حسابك محظور حالياً — لا يمكنك إرسال طلبات.<br>تواصل مع المتجر لرفع الحظر.</div>`;
+      if(st==='pending')return `<div style="background:#FEF9C3;color:#92400E;border-radius:12px;padding:14px;text-align:center;line-height:1.8">
+          <div style="font-size:30px">⏳</div>
+          <b style="font-size:14px;display:block;margin:4px 0">حسابك بانتظار التوثيق</b>
+          <span style="font-size:12.5px">سنفعّل حسابك قريباً، وعندها يمكنك إتمام الطلب.</span>
+          <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:10px;font-size:13px" onclick="closeCart();setTimeout(requireVerifiedToOrder,150)">تواصل لتسريع التوثيق</button>
+        </div>`;
+      return `<div style="background:var(--primary-soft);color:var(--primary-d);border-radius:12px;padding:14px;text-align:center;line-height:1.8">
+          <div style="font-size:30px">🔒</div>
+          <b style="font-size:14px;display:block;margin:4px 0">سجّل حسابك لإتمام الطلب</b>
+          <span style="font-size:12.5px">للطلب من المتجر، أنشئ حساباً ويتم توثيقه من الإدارة. دقيقة واحدة فقط.</span>
+          <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:10px;font-size:13px" onclick="closeCart();setTimeout(visitorRegister,150)">تسجيل حساب جديد</button>
+          <button class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:6px;font-size:12.5px" onclick="closeCart();setTimeout(customerLogin,150)">لديّ حساب — تسجيل الدخول</button>
+        </div>`;
+    })()}
     <button class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:7px;font-size:13px" onclick="closeCart()">← متابعة التسوق</button>
     <button class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:5px;font-size:12.5px;color:#dc2626" onclick="CART=[];saveCart();renderStoreCart();updateCartBadge();renderStoreGrid();renderDeals()">🗑 ${t('clearCart')}</button>`;
 }
@@ -6955,8 +7014,62 @@ function cartSetQty(i,v){const l=CART[i];if(!l)return;let n=parseInt(String(v).r
 
 /* ---- إتمام الطلب (نموذج البيع) ---- */
 let _coords=null,_payProof=null,_payMode='cod',_payApp='',_payPts=0,_balRemainMode='cod';
+/* حارس الطلب: لا يُسمح بالطلب إلا لزبون مسجّل وموثّق من المدير وغير محظور */
+function orderEligibility(){
+  const v=getVisitor();
+  const reg=(v&&v.id&&typeof regFind==='function')?regFind(v.id):null;
+  const hasRealAccount=!!(v&&v.id&&v.passSet||(reg&&reg.passHash));
+  if(!v||!v.id||!hasRealAccount) return 'guest';        // لا حساب حقيقي
+  if(window._acctBlocked||v.blocked||(reg&&reg.blocked)) return 'blocked';
+  const isVerified=(reg?!!reg.verified:!!v.verified);
+  if(!isVerified) return 'pending';                      // مسجّل لكن غير موثّق
+  return 'ok';
+}
+function requireVerifiedToOrder(){
+  const v=getVisitor();
+  // حدّث حالة التوثيق من السحابة إن أمكن (قد يكون المدير وثّقه للتو)
+  try{if(v&&v.id&&typeof syncVisitorVerification==='function')syncVisitorVerification();}catch(e){}
+  const reg=(v&&v.id&&typeof regFind==='function')?regFind(v.id):null;
+  const hasRealAccount=!!(v&&v.id&&v.passSet||(reg&&reg.passHash));
+  // 1) غير مسجّل حساباً حقيقياً (أو مجرّد زائر كتب اسمه يدوياً) → يجب التسجيل أولاً
+  if(!v||!v.id||!hasRealAccount){
+    modal({size:'sm',body:`<div style="text-align:center;padding:6px 4px">
+        <div style="font-size:40px">🔒</div>
+        <p style="font-weight:800;margin:12px 0 6px;font-size:16px">سجّل حسابك أولاً</p>
+        <p class="muted" style="font-size:13px;line-height:1.8">للطلب من المتجر، يجب أن تسجّل حساباً ويتم توثيقه من إدارة المتجر. لن يستغرق الأمر سوى دقيقة.</p>
+      </div>`,
+      actions:[
+        {label:'تسجيل حساب جديد',primary:true,fn:()=>{closeModal();setTimeout(visitorRegister,120);return false;}},
+        {label:'لديّ حساب — تسجيل الدخول',fn:()=>{closeModal();setTimeout(customerLogin,120);return false;}},
+        {label:t('close'),fn:()=>true}
+      ]});
+    return false;
+  }
+  // 2) محظور
+  if(window._acctBlocked||v.blocked||(reg&&reg.blocked)){
+    toast('حسابك محظور حالياً — لا يمكنك إرسال طلبات. تواصل مع المتجر.','err');
+    return false;
+  }
+  // 3) مسجّل لكن لم يُوثَّق بعد من المدير (نعتمد السجل السحابي إن وُجد)
+  const isVerified = (reg ? !!reg.verified : !!v.verified);
+  if(!isVerified){
+    modal({size:'sm',body:`<div style="text-align:center;padding:6px 4px">
+        <div style="font-size:40px">⏳</div>
+        <p style="font-weight:800;margin:12px 0 6px;font-size:16px">حسابك بانتظار التوثيق</p>
+        <p class="muted" style="font-size:13px;line-height:1.8">شكراً لتسجيلك يا <b>${esc(v.name||'')}</b>. تتم الآن مراجعة حسابك من إدارة المتجر، وبمجرد الموافقة ستتمكّن من إرسال طلباتك مباشرة.</p>
+        <div style="background:var(--surface-2,#f1f5f9);border-radius:10px;padding:10px;margin-top:10px;font-size:12.5px;color:var(--ink)">للإسراع بالتوثيق يمكنك التواصل مع خدمة العملاء.</div>
+      </div>`,
+      actions:[
+        {label:'تواصل مع خدمة العملاء',primary:true,icon:I.wa,fn:()=>{const num=storeWaNumber();window.open('https://wa.me/'+num+'?text='+encodeURIComponent('مرحباً، سجّلت حساباً باسم '+(v.name||'')+' وأريد توثيقه لأتمكّن من الطلب.'),'_blank');return false;}},
+        {label:t('close'),fn:()=>true}
+      ]});
+    return false;
+  }
+  return true;
+}
 function checkoutWhatsApp(){
   if(!CART.length)return;
+  if(!requireVerifiedToOrder())return;
   const num=(DB.settings.whatsapp||'').replace(/[^0-9]/g,'');
   if(!num){toast(t('waNotSet'),'err');return;}
   openCheckout(num);
@@ -7029,12 +7142,14 @@ function renderPayProofs(){const pv=document.getElementById('co_proofPrev');if(!
 }
 function payRemoveProof(i){(window._payProofs||[]).splice(i,1);_payProof=(window._payProofs||[])[0]||null;renderPayProofs();}
 function submitCheckout(num,total){
+  if(!requireVerifiedToOrder())return false;
   const name=(val('co_name')||'').trim();const cc=val('co_cc')||'222';const phone=(val('co_phone')||'').trim();
   if(!name||!phone){toast(t('coNeed'),'err');const ci=document.getElementById('coInfo');if(ci)ci.classList.remove('hidden');return false;}
   if(cc==='222'&&digitsOnly(phone).length!==8){toast(LANG==='fr'?'Le numéro mauritanien doit comporter 8 chiffres':'رقم الهاتف الموريتاني يجب أن يكون 8 أرقام','err');const ci=document.getElementById('coInfo');if(ci)ci.classList.remove('hidden');return false;}
-  // حفظ/تحديث بيانات الزائر تلقائياً
+  // حفظ/تحديث بيانات الزائر — دون منح هوية حساب لمن لم يسجّل فعلاً
   const v=getVisitor()||{};
-  setVisitor({id:v.id||regKey(cc,phone),name,cc,phone,verified:v.verified||false});
+  if(v.id&&v.passSet){ setVisitor(Object.assign({},v,{name,cc,phone})); }
+  else { setVisitor(Object.assign({},v,{name,cc,phone,id:'',verified:false,passSet:false})); }
   const ctx={num,total,name,cc,phone,addr:(val('co_addr')||'').trim(),pay:val('co_pay')||'',note:(val('co_note')||'').trim(),coords:_coords,voice:_voiceNote||''};
   setTimeout(()=>openPaymentStep(ctx),70);
   return true;
@@ -7181,6 +7296,7 @@ function renderPaymentStep(ctx){
 function setBalRemainMode(m){_balRemainMode=m;if(m==='cod')_payApp='';renderPaymentStep(window._coCtx);}
 function submitOrder(ctx){
   if(window._acctBlocked){toast('حسابك محظور بسبب معلومات غير صحيحة متكرّرة — لا يمكنك إرسال طلبات. تواصل مع المتجر.','err');return false;}
+  { const _v=getVisitor(); if(!_v||!_v.id||!_v.verified){ if(typeof requireVerifiedToOrder==='function')requireVerifiedToOrder(); else toast('يجب توثيق حسابك قبل إرسال الطلب','err'); return false; } }
   const ptsUsed=Math.max(0,Math.min(_payPts|0,loyUsable(ctx)));const ptsDisc=ptsUsed*loyRedeemVal();
   const effTotal=Math.max(0,ctx.grandTotal-ptsDisc);
   let payMode=_payMode,deposit=0,appBox=null,payNum='',fromBalance=0;
@@ -7780,7 +7896,7 @@ function visitorRegister(){
           const verified=(v.phone===phone&&v.verified&&!wasDeleted)?true:false;
           const reg={id,name,cc,phone,verified,date:new Date().toISOString(),source:'store',image:_vrImg||'',deleted:false,balance:0,points:0,statement:[],passHash:otpHash(id+':pass:'+pass)};
           try{const ref=localStorage.getItem('sadaqa_ref')||'';if(ref&&ref!==id&&!(v&&v.verified))reg.referrer=ref;}catch(e){}
-          setVisitor({id,name,cc,phone,verified,image:_vrImg||''});
+          setVisitor({id,name,cc,phone,verified,image:_vrImg||'',passSet:true});
           cloudAddRegistration(reg).catch(()=>{});
           updateMenuIdentity();closeModal();
           if(verified){toast('تم تحديث بياناتك','ok');return;}
@@ -8090,7 +8206,7 @@ function confirmLoginCode(){
     if(reg.loginCodeExp&&Date.now()>reg.loginCodeExp){toast('انتهت صلاحية الرمز — اطلب رمزاً جديداً','err');return;}
     if(otpHash(id+':'+code)!==reg.loginCodeHash){toast('الرمز غير صحيح','err');return;}
     try{cloudSetReg(id,{loginStatus:'used',loginCodeHash:''});}catch(e){}
-    setVisitor({id,name:reg.name,cc:reg.cc||cc,phone:reg.phone||phone,verified:!!reg.verified,image:reg.image||''});
+    setVisitor({id,name:reg.name,cc:reg.cc||cc,phone:reg.phone||phone,verified:!!reg.verified,image:reg.image||'',passSet:true});
     updateMenuIdentity();closeModal();toast('مرحباً '+reg.name+(reg.verified?' (موثّق ✔)':' (بانتظار التفعيل)'),'ok');showStore();
     setTimeout(()=>{try{watchVerification();}catch(e){}try{watchAccount();}catch(e){}},600);
   };
