@@ -5279,6 +5279,11 @@ function ordersRefresh(){
 let _ordRenderTimer=null;
 function scheduleOrdersRender(){
   if(_ordRenderTimer)clearTimeout(_ordRenderTimer);
+  /* لا تعيد الرسم إذا كان المستخدم يكتب في حقول الحمّال أو أي حقل داخل الطلبات */
+  const active=document.activeElement;
+  if(active&&active.id&&(active.id.startsWith('pr_phone_')||active.id.startsWith('pr_name_')||active.id.startsWith('pr_wage_'))){
+    _ordRenderTimer=setTimeout(function(){scheduleOrdersRender();},600);return;
+  }
   _ordRenderTimer=setTimeout(function(){ _ordRenderTimer=null; if(current==='orders'&&typeof renderOrders==='function')renderOrders(); },300);
 }
 function renderOrders(list){
@@ -5493,7 +5498,7 @@ function loyManage(key,name){
 function convertOrder(id){
   const o=(DB.orders||[]).find(x=>x.id===id);if(!o)return;
   confirmDlg('تحويل الطلب إلى فاتورة؟','سيُنشأ بيع جديد، ويُخصم المخزون، وتُسجّل الدفعة في الصندوق.',()=>{
-    const wh='wh_main';
+    const wh=defWh();
     const items=o.items.map(l=>{const p=(typeof findProd==='function'?findProd(l):null)||DB.products.find(x=>x.id===l.id)||DB.products.find(x=>normAr(x.name)===normAr(l.name));const price=Number(l.price)||0,qty=Number(l.qty)||0;
       return {id:p?p.id:l.id,name:l.name,code:p?(p.code||''):(l.code||''),unit:l.unit||(p?(p.unit||'قطعة'):'قطعة'),factor:Number(l.factor)||1,price,qty,disc:0,total:price*qty,wh,warehouseName:whName(wh),cost:p?(p.wholesale||0):0};});
     if(o.delivery>0)items.push({id:'svc_deliv',name:'الحمل (توصيل)',unit:'خدمة',price:o.delivery,qty:1,disc:0,total:o.delivery,service:true,wh,warehouseName:whName(wh),cost:(o.porter?(Number(o.porter.wage)||0):0)});
