@@ -1157,6 +1157,9 @@ function cloudInit(){
   ledgerSubscribe();
   /* المنتجات: كل منتج وثيقة مستقلة */
   FS.collection('products').onSnapshot(snap=>{
+    /* تجاهل الأحداث الناتجة عن كتاباتنا المحلية المعلّقة حتى يؤكّدها الخادم،
+       لمنع استبدال المخزون المحدّث (شراء/بيع) بنسخة قديمة قبل اكتمال الرفع */
+    if(snap.metadata&&snap.metadata.hasPendingWrites)return;
     if(snap.empty&&_firstProdSync&&DB.products&&DB.products.length){
       /* أول مرة والسحابة فارغة: ارفع المنتجات المحلية */
       DB.products.forEach(p=>{if(p&&p.id)FS.collection('products').doc(String(p.id)).set(p).catch(()=>{});});
@@ -3086,9 +3089,9 @@ function invSave(){
   const balAfter=cust?(isReturn?(balBefore-net):(balBefore+(net-paid))):0;
   // المخزون: المرتجع يُعيد الكمية، البيع يخصمها (الخدمات لا تتأثر)
   const _aff=[];
-  cart.forEach(l=>{if(l.service)return;const p=DB.products.find(x=>x.id===l.id);if(p){const w=l.wh||saleWh;ensureStock(p);
+  cart.forEach(l=>{if(l.service)return;const p=(typeof findProd==='function'?findProd(l):null)||DB.products.find(x=>x.id===l.id)||(l.code&&DB.products.find(x=>x.code&&String(x.code).trim().toLowerCase()===String(l.code).trim().toLowerCase()))||DB.products.find(x=>normAr(x.name)===normAr(l.name));if(p){const w=l.wh||saleWh;ensureStock(p);
     p.stock[w]=isReturn?((Number(p.stock[w])||0)+l.qty):((Number(p.stock[w])||0)-l.qty);
-    p.qty=stockSum(p);if(!_aff.includes(p))_aff.push(p);}});
+    p.qty=stockSum(p);if(!_aff.includes(p))_aff.push(p);}else{console.warn('بيع: لم يُعثر على المنتج لخصم المخزون:',l.name,l.id);}});
   const no=editing?editing.no:DB.seq.sale++;
   const whset=[...new Set(cart.filter(l=>!l.service).map(l=>l.wh||saleWh))];
   const invWhName=whset.length>1?'متعدّد المخازن':whName(whset[0]||saleWh);
@@ -5252,7 +5255,7 @@ function renderOrders(list){
         <div style="text-align:end"><b style="font-size:16px">${money(o.total)} ${CUR()}</b><div class="muted" style="font-size:11px">${fmtDateTime(o.date)}</div></div>
       </div>
       <div style="font-size:12.5px;margin-top:8px">${o.items.map(l=>`${esc(l.name)} ×${l.qty}`).join(' · ')}</div>
-      ${(()=>{ if(o.saleId||isCancel)return ''; const sh=[]; (o.items||[]).forEach(l=>{ if(l.service)return; const p=DB.products.find(x=>x.id===l.id)||DB.products.find(x=>x.name===l.name); if(!p)return; const avail=Number(p.qty)||0; const need=Number(l.qty)||0; if(need>avail){ sh.push('<b>'+esc(p.name)+'</b> ناقص بـ'+money(need-avail)+(avail>0?(' (المتوفّر '+money(avail)+')'):' (غير متوفّر)')); } }); return sh.length?`<div style="margin-top:8px;background:#FEF3C7;border:1px solid #F59E0B;border-radius:9px;padding:8px 10px;font-size:12px;color:#92400E;line-height:1.7">⚠️ <b>تنبيه نقص مخزون:</b><br>${sh.join('<br>')}</div>`:''; })()}
+      ${(()=>{ if(o.saleId||isCancel)return ''; const sh=[]; (o.items||[]).forEach(l=>{ if(l.service)return; const p=(typeof findProd==='function'?findProd(l):null)||DB.products.find(x=>x.id===l.id)||DB.products.find(x=>x.name===l.name); if(!p)return; const avail=Number(p.qty)||0; const need=(Number(l.qty)||0)*(Number(l.factor)||1); if(need>avail){ sh.push('<b>'+esc(p.name)+'</b> ناقص بـ'+money(need-avail)+(avail>0?(' (المتوفّر '+money(avail)+')'):' (غير متوفّر)')); } }); return sh.length?`<div style="margin-top:8px;background:#FEF3C7;border:1px solid #F59E0B;border-radius:9px;padding:8px 10px;font-size:12px;color:#92400E;line-height:1.7">⚠️ <b>تنبيه نقص مخزون:</b><br>${sh.join('<br>')}</div>`:''; })()}
       <div class="muted" style="font-size:12px;margin-top:5px">الحمل: ${money(o.delivery)} · الدفع: ${payTxt}${o.addr?(' · '+esc(o.addr)):''}</div>
       ${(o.proofs&&o.proofs.length)?`<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">${o.proofs.map(im=>`<img src="${im}" onclick="imgLightbox('${im}')" style="height:90px;border-radius:8px;cursor:zoom-in">`).join('')}</div>`:(o.proof?`<img src="${o.proof}" onclick="imgLightbox('${o.proof}')" style="margin-top:8px;max-height:90px;border-radius:8px;cursor:zoom-in">`:'')}
       ${o.voice?`<div style="margin-top:8px"><div class="muted" style="font-size:11px;margin-bottom:3px">🎙 رسالة العميل الصوتية (العنوان):</div><audio controls src="${o.voice}" style="width:100%;max-width:320px;height:34px"></audio></div>`:''}
@@ -5470,7 +5473,7 @@ function convertOrder(id){
       items,subtotal,discount:0,total,paid,remaining,profit,balanceBefore:balBefore,balanceAfter:balBefore+(remaining>0?remaining:0),
       payments:paid>0?[{amount:paid,date:todayISO(),note:'دفعة طلب #'+o.no+(o.payApp?(' عبر '+o.payApp):''),box:boxId,boxName:boxName(boxId)}]:[],
       source:'order',orderId:o.id};
-    items.forEach(it=>{if(it.service)return;const p=DB.products.find(x=>x.id===it.id);if(p){const dec=it.qty*(Number(it.factor)||1);p.qty=(Number(p.qty)||0)-dec;if(!p.stock)p.stock={};p.stock[wh]=(Number(p.stock[wh])||0)-dec;cloudPutProduct(p);}});
+    items.forEach(it=>{if(it.service)return;const p=findProd(it)||DB.products.find(x=>x.id===it.id);if(p){const dec=it.qty*(Number(it.factor)||1);p.qty=(Number(p.qty)||0)-dec;if(!p.stock)p.stock={};p.stock[wh]=(Number(p.stock[wh])||0)-dec;cloudPutProduct(p);}else{console.warn('لم يُعثر على المنتج لخصم المخزون:',it.name,it.id);}});
     DB.sales.push(sale);
     if(cust&&remaining>0)cust.balance=(Number(cust.balance)||0)+remaining;
     if(paid>0)addCash('in',paid,'دفعة طلب #'+o.no,sale.id,boxId);
