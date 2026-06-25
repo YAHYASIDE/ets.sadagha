@@ -962,7 +962,7 @@ const FB_CONFIG={
   messagingSenderId:"235682599633",
   appId:"1:235682599633:web:2c605dadb51cdafd84abf0"
 };
-let FS=null, AUTH=null, _applyingRemote=false, _metaTs=0, _firstProdSync=true, _firstMetaSync=true;
+let FS=null, AUTH=null, _applyingRemote=false, _metaTs=0, _firstProdSync=true, _firstMetaSync=true, _pendingRefresh=false;
 try{
   if(window.firebase&&FB_CONFIG.apiKey){
     firebase.initializeApp(FB_CONFIG);
@@ -1149,9 +1149,23 @@ function refreshViews(){
     const sf=document.getElementById('storefront');
     const au=document.getElementById('adminUI');
     if(sf&&!sf.classList.contains('hidden')&&typeof renderStore==='function')renderStore();
+    /* لا تُعد رسم لوحة الإدارة تلقائياً أثناء عمل مؤقت غير محفوظ (فاتورة بيع/شراء،
+       بيع سريع، أو أي سلة فيها عناصر) حتى لا تُفرَّغ السلة أو يُقاطَع المستخدم بسبب المزامنة */
+    const busyPage=(typeof current!=='undefined')&&(current==='invoice'||current==='pos');
+    const busyCart=(typeof cart!=='undefined'&&cart&&cart.length)||(typeof pcart!=='undefined'&&pcart&&pcart.length)||(typeof posCart!=='undefined'&&posCart&&posCart.length);
+    if(busyPage||busyCart){ _pendingRefresh=true; return; }
     if(au&&!au.classList.contains('hidden')&&typeof render==='function')render();
   }catch(e){console.warn('refreshViews',e);}
 }
+/* يطبّق أي تحديث مزامنة مؤجّل بمجرد أن ينتهي المستخدم من العمل (غادر الفاتورة وفرّغ السلة) */
+setInterval(function(){
+  try{
+    if(!_pendingRefresh)return;
+    const busyPage=(typeof current!=='undefined')&&(current==='invoice'||current==='pos');
+    const busyCart=(typeof cart!=='undefined'&&cart&&cart.length)||(typeof pcart!=='undefined'&&pcart&&pcart.length)||(typeof posCart!=='undefined'&&posCart&&posCart.length);
+    if(!busyPage&&!busyCart){ _pendingRefresh=false; const au=document.getElementById('adminUI'); if(au&&!au.classList.contains('hidden')&&typeof render==='function')render(); }
+  }catch(e){}
+},2500);
 function cloudInit(){
   if(!FS)return;
   setSync('sync');
