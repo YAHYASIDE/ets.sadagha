@@ -1268,9 +1268,10 @@ function cloudInit(){
   /* الطلبات: تحديث حيّ + إشعار */
   try{
     FS.collection('orders').onSnapshot(snap=>{
+      if(snap.metadata&&snap.metadata.hasPendingWrites)return;
       const list=snap.docs.map(d=>d.data());
       DB.orders=list;try{save();}catch(e){}
-      if(current==='orders'){if(typeof renderOrders==='function')renderOrders();}
+      if(current==='orders'){if(typeof scheduleOrdersRender==='function')scheduleOrdersRender();else if(typeof renderOrders==='function')renderOrders();}
       if(typeof updateOrderBadge==='function')updateOrderBadge();
       const pend=list.filter(o=>(o.status||'pending')==='pending');
       if(window._ordInit&&typeof CUR_USER!=='undefined'&&CUR_USER){
@@ -5261,8 +5262,9 @@ function vOrders(v){
     <div style="padding:12px 16px 4px;display:flex;gap:6px;flex-wrap:wrap">
       ${tab('all','الكل')}${tab('pending','قيد المراجعة')}${tab('delivering','جاري التوصيل')}${tab('delivered','مكتملة')}${tab('cancelled','ملغية')}</div>
     <div style="padding:6px 16px 14px">
-      <div id="ordersList"><div class="muted" style="padding:14px">جارٍ التحميل من السحابة...</div></div>
+      <div id="ordersList">${(DB.orders&&DB.orders.length)?'':'<div class="muted" style="padding:14px">جارٍ التحميل من السحابة...</div>'}</div>
     </div></div>`;
+  if(DB.orders&&DB.orders.length)renderOrders();
   ordersRefresh();
   try{localStorage.setItem('sadaqa_seen_order',Date.now());}catch(e){}
   const al=document.getElementById('orderAlert');if(al)al.remove();
@@ -5272,6 +5274,11 @@ function ordersRefresh(){
   const p=cloudFetchOrders();
   if(p&&p.then)p.then(list=>{if(list===null)renderOrders(DB.orders||[]);else{DB.orders=list;save();renderOrders(list);}}).catch(()=>renderOrders(DB.orders||[]));
   else renderOrders(DB.orders||[]);
+}
+let _ordRenderTimer=null;
+function scheduleOrdersRender(){
+  if(_ordRenderTimer)clearTimeout(_ordRenderTimer);
+  _ordRenderTimer=setTimeout(function(){ _ordRenderTimer=null; if(current==='orders'&&typeof renderOrders==='function')renderOrders(); },300);
 }
 function renderOrders(list){
   list=(list||DB.orders||[]).slice().sort((a,b)=>new Date(b.date)-new Date(a.date));
