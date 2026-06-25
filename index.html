@@ -1069,6 +1069,7 @@ function pubSettings(){
 function markProdDeleted(id){if(!id)return;if(!DB._delProds)DB._delProds=[];if(!DB._delProds.includes(id))DB._delProds.push(id);cloudDelProduct(id);}
 function cloudPutProduct(p){
   if(p&&p.id&&DB._delProds&&DB._delProds.includes(p.id))DB._delProds=DB._delProds.filter(x=>x!==p.id);
+  if(p&&p.id){p._ts=Date.now();}
   if(!FS||_applyingRemote||!p||!p.id)return;
   setSync('sync');
   FS.collection('products').doc(String(p.id)).set(p)
@@ -1173,6 +1174,24 @@ function cloudInit(){
         back.forEach(d=>{try{FS.collection('products').doc(String(d.id)).delete().catch(()=>{});}catch(e){}});
         docs=docs.filter(d=>d&&!tomb.includes(d.id));
       }
+      /* دمج ذكي: إن كانت النسخة المحلية أحدث (عُدّلت للتو ولم يصل تأكيدها)، أبقِها وأعد رفعها */
+      const localById={};(DB.products||[]).forEach(p=>{if(p&&p.id)localById[p.id]=p;});
+      docs=docs.map(d=>{
+        const loc=localById[d&&d.id];
+        if(loc&&Number(loc._ts||0)>Number(d._ts||0)){
+          try{FS.collection('products').doc(String(loc.id)).set(loc).catch(()=>{});}catch(e){}
+          return loc;
+        }
+        return d;
+      });
+      /* منتجات محلية جديدة لم تصل السحابة بعد: أضِفها وارفعها */
+      const cloudIds=new Set(docs.map(d=>d&&d.id));
+      (DB.products||[]).forEach(p=>{
+        if(p&&p.id&&!cloudIds.has(p.id)&&!tomb.includes(p.id)){
+          docs.push(p);
+          try{FS.collection('products').doc(String(p.id)).set(p).catch(()=>{});}catch(e){}
+        }
+      });
       DB.products=docs;
       save();
       _applyingRemote=false;
@@ -1924,7 +1943,7 @@ function posCheckout(){
   const profit=items.reduce((a,i)=>a+(i.price-(i.cost||0))*i.qty,0);
   const no=DB.seq.sale++;
   const sale={id:uid('inv'),no,type:'cash',date:todayISO()+'T'+new Date().toISOString().slice(11),customerId:'',customerName:DB.settings.guestName||'زبون نقدي',warehouseId:wh,boxId:box,boxName:boxName(box),items,subtotal,discount:0,total,paid:total,remaining:0,profit,payments:[{amount:total,date:todayISO(),note:'نقدي'}],source:'pos',createdBy:(typeof CUR_USER!=='undefined'&&CUR_USER&&CUR_USER.name)?CUR_USER.name:''};
-  items.forEach(it=>{const p=DB.products.find(x=>x.id===it.id);if(p){ensureStock(p);p.stock[wh]=Math.max(0,(Number(p.stock[wh])||0)-it.qty);p.qty=stockSum(p);if(typeof cloudPutProduct==='function')cloudPutProduct(p);}});
+  items.forEach(it=>{const p=(typeof findProd==='function'?findProd(it):null)||DB.products.find(x=>x.id===it.id)||(it.code&&DB.products.find(x=>x.code&&String(x.code).trim().toLowerCase()===String(it.code).trim().toLowerCase()))||DB.products.find(x=>normAr(x.name)===normAr(it.name));if(p){ensureStock(p);p.stock[wh]=(Number(p.stock[wh])||0)-it.qty;p.qty=stockSum(p);if(typeof cloudPutProduct==='function')cloudPutProduct(p);}else{console.warn('بيع سريع: لم يُعثر على المنتج:',it.name,it.id);}});
   DB.sales.push(sale);addCash('in',total,'بيع سريع #'+no,sale.id,box,sale.date);
   save();const done=total;posCart=[];renderPosGrid();renderPosCart();
   toast('تم البيع #'+no+' · '+m(done),'ok');
