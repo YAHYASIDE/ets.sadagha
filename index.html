@@ -3160,7 +3160,7 @@ function unlockDateField(fieldId){
     <p class="muted" style="font-size:13px;margin-bottom:10px">أدخل الرمز السري للسماح بتغيير التاريخ.</p>
     <input class="inp" id="dpin" type="password" inputmode="numeric" placeholder="••••" style="text-align:center;letter-spacing:8px;font-size:20px" onkeydown="if(event.key==='Enter'){var b=document.querySelector('#modalActions .btn-primary');if(b)b.click();}">`,
     actions:[{label:'فتح',primary:true,fn:()=>{
-      if((val('dpin')||'')!==String(DB.settings.datePin||DB.settings.quickPin||'1234')){toast('الرمز غير صحيح','err');return false;}
+      if((val('dpin')||'')!==String(DB.settings.datePin||'1234')){toast('الرمز غير صحيح','err');return false;}
       const d=document.getElementById(fieldId);if(d){d.disabled=false;setTimeout(()=>{try{d.focus();if(d.showPicker)d.showPicker();}catch(e){}},60);}
       toast('يمكنك الآن تغيير التاريخ','ok');return true;}},{label:'إلغاء',fn:()=>true}]});
 }
@@ -6022,7 +6022,6 @@ function vSettings(v){
       <div class="field"><label>رقم واتساب (مع رمز الدولة، بدون +)</label><input class="inp" id="set_wa" placeholder="مثال: 213XXXXXXXXX" value="${esc(DB.settings.whatsapp||'')}"></div>
       <div class="field"><label>رقم واتساب المدير (لإشعارات السحب/الصرف)</label><input class="inp" id="set_managerwa" placeholder="مثال: 222XXXXXXXX" value="${esc(DB.settings.managerWa||'')}"></div>
       <div class="field"><label>العلامات التجارية (افصل بفاصلة)</label><input class="inp" id="set_brands" value="${esc((DB.settings.brands||[]).join('، '))}"></div>
-      <div class="field"><label>رمز الدخول السريع (مدير)</label><input class="inp" id="set_pin" inputmode="numeric" placeholder="مثال: 1234" value="${esc(DB.settings.quickPin||'')}"></div>
       <div class="field" style="border:1px solid var(--primary);border-radius:12px;padding:12px;margin-top:6px;background:var(--primary-soft)">
         <label style="font-weight:800;color:var(--primary-d)">🔐 مزامنة سحابية آمنة (للدخول السريع بالرمز)</label>
         <div class="muted" style="font-size:11.5px;margin:4px 0 8px">أدخل بريد وكلمة سر حساب Firebase. عند الدخول بالرمز، يُصادق التطبيق سحابياً تلقائياً ليرى الطلبات والمبيعات. تُحفظ على هذا الجهاز فقط.</div>
@@ -6172,7 +6171,6 @@ function saveSettings(){
   DB.settings.managerWa=val('set_managerwa').trim();
   DB.settings.waBusiness=!!(document.getElementById('set_wabiz')||{}).checked;
   DB.settings.brands=val('set_brands').split(/[،,]/).map(s=>s.trim()).filter(Boolean);
-  const _pin=document.getElementById('set_pin');if(_pin)DB.settings.quickPin=_pin.value.trim();
   const _ce=document.getElementById('set_cloudemail');if(_ce)DB.settings.cloudEmail=_ce.value.trim();
   const _cp=document.getElementById('set_cloudpass');if(_cp)DB.settings.cloudPass=_cp.value;
   const _pn=document.getElementById('set_paynum');if(_pn)DB.settings.payNumber=_pn.value.trim()||'20108565';
@@ -8524,30 +8522,8 @@ function delUser(id){
 }
 function logout(){CUR_USER=null;if(AUTH&&AUTH.currentUser){try{AUTH.signOut();}catch(e){}}showStore();toast('تم تسجيل الخروج','ok');}
 function quickPinLogin(){
-  const pin=(val('adm_pin')||'').trim();
-  if(!pin){toast('أدخل الرمز','err');return;}
-  if(pin!==String(DB.settings.quickPin||'')){toast('الرمز غير صحيح','err');return;}
-  const u=DB.users.find(x=>x.role==='مدير')||DB.users.find(x=>x.username==='manager')||DB.users.find(x=>x.role==='صاحب')||DB.users[0];
-  if(!u){toast('لا يوجد مستخدم مدير','err');return;}
-  const openPanel=()=>{CUR_USER=u;closeModal();toast('مرحباً '+u.name,'ok');showAdmin();};
-  /* مصادقة سحابية في الخلفية حتى يرى الأدمن الطلبات/المبيعات رغم الدخول بالرمز */
-  const em=(DB.settings.cloudEmail||'').trim(),pw=DB.settings.cloudPass||'';
-  if(AUTH&&em&&pw&&!(AUTH.currentUser)){
-    toast('جارٍ الاتصال الآمن بالسحابة...','ok');
-    AUTH.signInWithEmailAndPassword(em,pw)
-      .then(()=>{openPanel();})
-      .catch(err=>{
-        const c=(err&&err.code)||'';
-        let msg='تعذّر الاتصال السحابي — ستعمل دون مزامنة كاملة';
-        if(c.includes('wrong-password')||c.includes('invalid-credential'))msg='كلمة سر المزامنة غير صحيحة (راجِع الإعدادات)';
-        else if(c.includes('user-not-found'))msg='بريد المزامنة غير موجود في Firebase';
-        else if(c.includes('network'))msg='لا اتصال بالإنترنت — ستعمل محلياً';
-        toast(msg,'err');
-        openPanel(); // ندخل محلياً على أي حال
-      });
-  }else{
-    openPanel();
-  }
+  /* أُلغي الدخول السريع بالرمز — استخدم الدخول الآمن بالبريد وكلمة السر */
+  if(typeof adminLogin==='function'){toast('استخدم الدخول الآمن بالبريد وكلمة السر','err');}
 }
 function firebaseLogin(){
   const email=(val('adm_email')||'').trim();const pass=val('adm_fpass')||'';
@@ -8584,20 +8560,13 @@ function adminLogin(){
         <button class="btn btn-primary" onclick="firebaseLogin()">دخول</button>
       </div>
     </div>
-    <div class="login-or"><span>أو دخول سريع كمدير</span></div>
-    <div class="quick-login">
-      <div style="display:flex;gap:8px">
-        <input class="inp" id="adm_pin" type="password" inputmode="numeric" placeholder="الرمز السريع" autocomplete="off" style="flex:1" onkeydown="if(event.key==='Enter')quickPinLogin()">
-        <button class="btn" onclick="quickPinLogin()">دخول</button>
-      </div>
-    </div>
     <div class="login-or"><span>أو بالاسم وكلمة المرور</span></div>
     <div class="field"><label>اسم الدخول</label><input class="inp" id="adm_user" placeholder="owner / manager / staff1..." autocapitalize="off" autocomplete="off"></div>
     <div class="field"><label>كلمة المرور</label><input class="inp" id="adm_pass" type="password" placeholder="••••••" onkeydown="if(event.key==='Enter')document.getElementById('admGoBtn').click()"></div>`,
     actions:[
       {label:'دخول',primary:true,fn:()=>{
         const us=(val('adm_user')||'').trim();const pass=val('adm_pass')||'';
-        if(!us&&!pass){toast('استخدم الدخول الآمن أو الرمز السريع أعلاه','err');return false;}
+        if(!us&&!pass){toast('استخدم الدخول الآمن بالبريد أعلاه','err');return false;}
         const u=DB.users.find(x=>x.username===us&&x.pass===pass);
         if(u){CUR_USER=u;toast('مرحباً '+u.name,'ok');showAdmin();return true;}
         toast('بيانات الدخول غير صحيحة','err');return false;
