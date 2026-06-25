@@ -5264,8 +5264,9 @@ function vOrders(v){
     <div style="padding:6px 16px 14px">
       <div id="ordersList">${(DB.orders&&DB.orders.length)?'':'<div class="muted" style="padding:14px">جارٍ التحميل من السحابة...</div>'}</div>
     </div></div>`;
-  if(DB.orders&&DB.orders.length)renderOrders();
-  ordersRefresh();
+  renderOrders();
+  /* لا نجلب من السحابة يدوياً هنا — المزامنة اللحظية (onSnapshot) تُبقي الطلبات محدّثة،
+     والجلب اليدوي المتكرر كان يسبب وميض الصفحة */
   try{localStorage.setItem('sadaqa_seen_order',Date.now());}catch(e){}
   const al=document.getElementById('orderAlert');if(al)al.remove();
   updateOrderBadge();
@@ -5493,8 +5494,8 @@ function convertOrder(id){
   const o=(DB.orders||[]).find(x=>x.id===id);if(!o)return;
   confirmDlg('تحويل الطلب إلى فاتورة؟','سيُنشأ بيع جديد، ويُخصم المخزون، وتُسجّل الدفعة في الصندوق.',()=>{
     const wh='wh_main';
-    const items=o.items.map(l=>{const p=DB.products.find(x=>x.id===l.id);const price=Number(l.price)||0,qty=Number(l.qty)||0;
-      return {id:l.id,name:l.name,code:p?(p.code||''):'',unit:l.unit||(p?(p.unit||'قطعة'):'قطعة'),factor:Number(l.factor)||1,price,qty,disc:0,total:price*qty,wh,warehouseName:whName(wh),cost:p?(p.wholesale||0):0};});
+    const items=o.items.map(l=>{const p=(typeof findProd==='function'?findProd(l):null)||DB.products.find(x=>x.id===l.id)||DB.products.find(x=>normAr(x.name)===normAr(l.name));const price=Number(l.price)||0,qty=Number(l.qty)||0;
+      return {id:p?p.id:l.id,name:l.name,code:p?(p.code||''):(l.code||''),unit:l.unit||(p?(p.unit||'قطعة'):'قطعة'),factor:Number(l.factor)||1,price,qty,disc:0,total:price*qty,wh,warehouseName:whName(wh),cost:p?(p.wholesale||0):0};});
     if(o.delivery>0)items.push({id:'svc_deliv',name:'الحمل (توصيل)',unit:'خدمة',price:o.delivery,qty:1,disc:0,total:o.delivery,service:true,wh,warehouseName:whName(wh),cost:(o.porter?(Number(o.porter.wage)||0):0)});
     const goodsTotal=items.filter(i=>!i.service&&!/حمل|توصيل|livr|transport/i.test(i.name||'')).reduce((a,i)=>a+i.total,0);
     const ptsDisc=Math.max(0,Number(o.pointsDiscount)||0);
