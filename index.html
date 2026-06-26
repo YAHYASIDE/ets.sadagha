@@ -960,6 +960,10 @@ const I = {
   card:'<rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20M6 15h4"/>',
   globe:'<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/>',
   drill:'<path d="M4 7h9v5H4zM13 9h4l3 2-3 2h-4M7 12v4h3M9 16v4"/>',
+  eye:'<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>',
+  eyeOff:'<path d="M9.9 4.2A10 10 0 0 1 12 4c6.5 0 10 7 10 7a18 18 0 0 1-2.6 3.5M6.6 6.6A18 18 0 0 0 2 11s3.5 7 10 7a10 10 0 0 0 4-.8M3 3l18 18M9.5 9.6a3 3 0 0 0 4.2 4.2"/>',
+  ban:'<circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/>',
+  star:'<path d="M12 2.5l2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 18.4 6.1 21l1.2-6.5L2.5 9.9l6.6-.9z"/>',
 };
 function svg(p,w){return `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" ${w?`width="${w}" height="${w}"`:''}>${p}</svg>`;}
 
@@ -1657,7 +1661,9 @@ function whpFilter(wid){
   const el=document.getElementById('whpTbl');if(el)el.innerHTML=whpRows(items,wid);
 }
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
-function discPct(p){return (p.oldPrice&&p.oldPrice>p.price)?Math.round((1-p.price/p.oldPrice)*100):0;}
+function discPct(p){if(p&&p.fakeDisc>0)return Math.round(p.fakeDisc);return (p.oldPrice&&p.oldPrice>p.price)?Math.round((1-p.price/p.oldPrice)*100):0;}
+/* السعر المشطوب المعروض: للخصم الوهمي يُحسب من السعر الحقيقي (دون تغييره)، وإلا oldPrice الفعلي */
+function oldPriceShow(p){if(p&&p.fakeDisc>0){const d=Math.min(95,Math.max(0,p.fakeDisc));return Math.round((Number(p.price)||0)/(1-d/100));}return p.oldPrice||0;}
 const COUNTRY_CODES=[['222','🇲🇷 موريتانيا +222'],['212','🇲🇦 المغرب +212'],['221','🇸🇳 السنغال +221'],['223','🇲🇱 مالي +223'],['213','🇩🇿 الجزائر +213'],['216','🇹🇳 تونس +216'],['966','🇸🇦 السعودية +966'],['971','🇦🇪 الإمارات +971'],['20','🇪🇬 مصر +20'],['33','🇫🇷 فرنسا +33'],['1','🇺🇸 +1']];
 function ccOptions(sel){sel=String(sel||'222');return COUNTRY_CODES.map(([c,l])=>`<option value="${c}" ${sel===c?'selected':''}>${l}</option>`).join('');}
 function digitsOnly(s){return String(s||'').replace(/[^0-9]/g,'');}
@@ -2356,6 +2362,10 @@ function renderProducts(){
     <td class="t-num"><b>${p.qty}</b></td>
     <td><span class="badge ${s.c}">${s.t}</span></td>
     <td style="text-align:end;white-space:nowrap">
+      <button class="btn btn-icon btn-ghost btn-sm" onclick="toggleHidden('${p.id}')" title="${p.hidden?'مخفي عن الزبون — اضغط للإظهار':'ظاهر للزبون — اضغط للإخفاء'}" style="${p.hidden?'color:#dc2626':''}">${svg(p.hidden?I.eyeOff:I.eye,16)}</button>
+      <button class="btn btn-icon btn-ghost btn-sm" onclick="toggleSoldOut('${p.id}')" title="${p.soldOut?'معلّم: غير متوفر — اضغط للإلغاء':'متوفر — اضغط لتعليمه غير متوفر'}" style="${p.soldOut?'color:#d97706':''}">${svg(I.ban,16)}</button>
+      <button class="btn btn-icon btn-ghost btn-sm" onclick="setFakeDisc('${p.id}')" title="${p.fakeDisc>0?('خصم وهمي '+p.fakeDisc+'% — اضغط للتعديل'):'إضافة خصم وهمي (للعرض فقط)'}" style="${p.fakeDisc>0?'color:#16a34a':''}">${svg(I.tag,16)}</button>
+      <button class="btn btn-icon btn-ghost btn-sm" onclick="toggleFeatured('${p.id}')" title="${p.featured?'مميّز في أعلى المتجر — اضغط للإلغاء':'تمييز في أعلى المتجر'}" style="${p.featured?'color:#d97706':''}">${svg(I.star,16)}</button>
       <button class="btn btn-icon btn-ghost btn-sm" onclick="productHistory('${p.id}')" title="تفاصيل وحركة المادة">${svg(I.report,16)}</button>
       <button class="btn btn-icon btn-ghost btn-sm" onclick="printLabel('${p.id}')" title="طباعة ملصق">${svg(I.print,16)}</button>
       <button class="btn btn-icon btn-ghost btn-sm" onclick="editProduct('${p.id}')" title="تعديل">${svg(I.edit,16)}</button>
@@ -2363,6 +2373,11 @@ function renderProducts(){
     </td>
   </tr>`;}).join('')}</tbody></table>`;
 }
+/* ===== أزرار بطاقة المنتج الأربعة (تحكّم العرض في المتجر) ===== */
+function toggleHidden(id){const p=DB.products.find(x=>x.id===id);if(!p)return;p.hidden=!p.hidden;save();if(typeof cloudPutProduct==='function')cloudPutProduct(p);renderProducts();toast(p.hidden?'أُخفي المنتج عن الزبائن':'صار المنتج ظاهراً للزبائن','ok');}
+function toggleSoldOut(id){const p=DB.products.find(x=>x.id===id);if(!p)return;p.soldOut=!p.soldOut;save();if(typeof cloudPutProduct==='function')cloudPutProduct(p);renderProducts();toast(p.soldOut?'عُلّم المنتج: غير متوفر':'أُلغي تعليم «غير متوفر»','ok');}
+function setFakeDisc(id){const p=DB.products.find(x=>x.id===id);if(!p)return;const cur=p.fakeDisc||0;const v=prompt('نسبة الخصم الوهمي % (للعرض فقط — لا تغيّر السعر الحقيقي). اكتب 0 للإلغاء:',cur);if(v===null)return;let n=Math.round(Number(String(v).replace(/[^0-9.]/g,''))||0);n=Math.max(0,Math.min(95,n));p.fakeDisc=n;save();if(typeof cloudPutProduct==='function')cloudPutProduct(p);renderProducts();toast(n>0?('خصم وهمي '+n+'% (عرض فقط — السعر لم يتغيّر)'):'أُلغي الخصم الوهمي','ok');}
+function toggleFeatured(id){const p=DB.products.find(x=>x.id===id);if(!p)return;p.featured=!p.featured;save();if(typeof cloudPutProduct==='function')cloudPutProduct(p);renderProducts();toast(p.featured?'أُضيف للمميّزة (يظهر أعلى المتجر)':'أُزيل من المميّزة','ok');}
 const UNITS=['قطعة','كرتون','علبة','كيس','متر','متر مربع','كيلو','غرام','لتر','لفة','صندوق','طن','حبة','طقم','زوج','رول'];
 let _curProdUnits=[];
 function editProduct(id){
@@ -6963,8 +6978,8 @@ function renderCatTabs(){
 }
 function renderDeals(){
   const el=document.getElementById('dealRow');if(!el)return;
-  const instock=DB.products.filter(p=>p.qty>0);
-  const list=instock.slice().sort((a,b)=>discPct(b)-discPct(a)).slice(0,10);
+  const instock=DB.products.filter(p=>p.qty>0&&!p.hidden&&!p.soldOut);
+  const list=instock.slice().sort((a,b)=>{const f=(b.featured?1:0)-(a.featured?1:0);if(f)return f;return discPct(b)-discPct(a);}).slice(0,10);
   if(!list.length){document.getElementById('dealsSec').style.display='none';return;}
   document.getElementById('dealsSec').style.display='';
   el.innerHTML=list.map(p=>{const dp=discPct(p);const img=prodImg(p);return`
@@ -6986,12 +7001,14 @@ function renderStoreGrid(){
   const q=normAr(document.getElementById('storeQ')?.value||'');
   document.getElementById('prodSecTitle').textContent=storeCat?catLabel(storeCat):t('allProducts');
   let list=DB.products.filter(p=>{
+    if(p.hidden)return false;
     if(storeCat&&p.category!==storeCat)return false;
     if(q){const hay=normAr([p.name,p.nameFr,p.code,p.category,p.desc].join(' '));if(!hay.includes(q))return false;}
     return true;
   });
+  list.sort((a,b)=>(b.featured?1:0)-(a.featured?1:0));
   if(!list.length){el.innerHTML=`<div class="empty" style="grid-column:1/-1">${svg(I.box,42)}<b>${t('noProducts')}</b></div>`;return;}
-  el.innerHTML=list.map(p=>{const out=p.qty<=0;const dp=discPct(p);const tag=productTag(p);const img=prodImg(p);return`
+  el.innerHTML=list.map(p=>{const out=p.qty<=0||p.soldOut;const dp=discPct(p);const tag=productTag(p);const img=prodImg(p);return`
     <div class="prod-card" style="cursor:pointer" onclick="openProductDetail('${p.id}')">
       <div class="prod-img" ${img?`style="background-image:url(${img})"`:''}>${img?'':svg(I.box,30)}
         <span class="prod-badge">${money(p.price)} ${CUR()}</span>
@@ -7002,7 +7019,7 @@ function renderStoreGrid(){
         <div class="prod-cat">${esc(catLabel(p.category))}</div>
         <div class="prod-name">${esc(pName(p))}</div>
         <div class="prod-foot">
-          <div class="prod-price">${money(p.price)} <small>${CUR()}</small>${dp?`<s class="old-price">${money(p.oldPrice)}</s>`:''}</div>
+          <div class="prod-price">${money(p.price)} <small>${CUR()}</small>${dp?`<s class="old-price">${money(oldPriceShow(p))}</s>`:''}</div>
           ${cardCtrl(p,out)}
         </div>
       </div>
@@ -7103,7 +7120,7 @@ function imgLightbox(src){
 }
 function openProductDetail(id){
   const p=DB.products.find(x=>x.id===id);if(!p)return;
-  _pdId=id;_pdQty=1;const out=p.qty<=0;
+  _pdId=id;_pdQty=1;const out=p.qty<=0||p.soldOut;
   const punits=(p.units&&p.units.length>1)?p.units:null;
   _pdUnit=punits?(punits.find(u=>u.name===p.unit)||punits[0]):null;
   const _baseU=punits?punits[punits.length-1].name:'';
@@ -7120,7 +7137,7 @@ function openProductDetail(id){
     <h3 style="font-size:19px;font-weight:800;margin:3px 0 8px">${esc(pName(p))}</h3>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <span id="pdPrice" style="font-size:21px;font-weight:800;color:var(--primary-d)">${money(_pdUnit?_pdUnit.price:p.price)} ${CUR()}</span>
-      ${discPct(p)?`<s style="color:#94A3B8;font-weight:600;font-size:15px">${money(p.oldPrice)} ${CUR()}</s><span class="badge" style="background:#FCE7EE;color:#E11D48">-${discPct(p)}% ${t('off')}</span>`:''}
+      ${discPct(p)?`<s style="color:#94A3B8;font-weight:600;font-size:15px">${money(oldPriceShow(p))} ${CUR()}</s><span class="badge" style="background:#FCE7EE;color:#E11D48">-${discPct(p)}% ${t('off')}</span>`:''}
       <span class="badge ${out?'b-out':'b-ok'}">${stTxt}</span>
       ${p.code?`<span class="code-tag">${esc(p.code)}</span>`:''}
     </div>
