@@ -1661,9 +1661,9 @@ function whpFilter(wid){
   const el=document.getElementById('whpTbl');if(el)el.innerHTML=whpRows(items,wid);
 }
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
-function discPct(p){if(p&&p.fakeDisc>0)return Math.round(p.fakeDisc);return (p.oldPrice&&p.oldPrice>p.price)?Math.round((1-p.price/p.oldPrice)*100):0;}
-/* السعر المشطوب المعروض: للخصم الوهمي يُحسب من السعر الحقيقي (دون تغييره)، وإلا oldPrice الفعلي */
-function oldPriceShow(p){if(p&&p.fakeDisc>0){const d=Math.min(95,Math.max(0,p.fakeDisc));return Math.round((Number(p.price)||0)/(1-d/100));}return p.oldPrice||0;}
+function discPct(p){if(p&&p.fakeDisc>0&&p.fakeDiscOn!==false)return Math.round(p.fakeDisc);return (p.oldPrice&&p.oldPrice>p.price)?Math.round((1-p.price/p.oldPrice)*100):0;}
+/* السعر المشطوب المعروض: للخصم الوهمي المُفعّل يُحسب من السعر الحقيقي (دون تغييره)، وإلا oldPrice الفعلي */
+function oldPriceShow(p){if(p&&p.fakeDisc>0&&p.fakeDiscOn!==false){const d=Math.min(95,Math.max(0,p.fakeDisc));return Math.round((Number(p.price)||0)/(1-d/100));}return p.oldPrice||0;}
 const COUNTRY_CODES=[['222','🇲🇷 موريتانيا +222'],['212','🇲🇦 المغرب +212'],['221','🇸🇳 السنغال +221'],['223','🇲🇱 مالي +223'],['213','🇩🇿 الجزائر +213'],['216','🇹🇳 تونس +216'],['966','🇸🇦 السعودية +966'],['971','🇦🇪 الإمارات +971'],['20','🇪🇬 مصر +20'],['33','🇫🇷 فرنسا +33'],['1','🇺🇸 +1']];
 function ccOptions(sel){sel=String(sel||'222');return COUNTRY_CODES.map(([c,l])=>`<option value="${c}" ${sel===c?'selected':''}>${l}</option>`).join('');}
 function digitsOnly(s){return String(s||'').replace(/[^0-9]/g,'');}
@@ -2364,7 +2364,7 @@ function renderProducts(){
     <td style="text-align:end;white-space:nowrap">
       <button class="btn btn-icon btn-ghost btn-sm" onclick="toggleHidden('${p.id}')" title="${p.hidden?'مخفي عن الزبون — اضغط للإظهار':'ظاهر للزبون — اضغط للإخفاء'}" style="${p.hidden?'color:#dc2626':''}">${svg(p.hidden?I.eyeOff:I.eye,16)}</button>
       <button class="btn btn-icon btn-ghost btn-sm" onclick="toggleSoldOut('${p.id}')" title="${p.soldOut?'معلّم: غير متوفر — اضغط للإلغاء':'متوفر — اضغط لتعليمه غير متوفر'}" style="${p.soldOut?'color:#d97706':''}">${svg(I.ban,16)}</button>
-      <button class="btn btn-icon btn-ghost btn-sm" onclick="setFakeDisc('${p.id}')" title="${p.fakeDisc>0?('خصم وهمي '+p.fakeDisc+'% — اضغط للتعديل'):'إضافة خصم وهمي (للعرض فقط)'}" style="${p.fakeDisc>0?'color:#16a34a':''}">${svg(I.tag,16)}</button>
+      ${(()=>{const has=p.fakeDisc>0,shown=has&&p.fakeDiscOn!==false,col=shown?'#16a34a':(has?'#d97706':''),tip=!has?'إضافة خصم وهمي دعائي (لا يغيّر السعر)':(shown?('خصم وهمي '+p.fakeDisc+'% — ظاهر للزبون · اضغط للتعديل'):('خصم وهمي '+p.fakeDisc+'% — محفوظ ومخفي · اضغط للإظهار'));return `<button class="btn btn-icon btn-ghost btn-sm" onclick="setFakeDisc('${p.id}')" title="${tip}" style="${col?'color:'+col:''}">${svg(I.tag,16)}</button>`;})()}
       <button class="btn btn-icon btn-ghost btn-sm" onclick="toggleFeatured('${p.id}')" title="${p.featured?'مميّز في أعلى المتجر — اضغط للإلغاء':'تمييز في أعلى المتجر'}" style="${p.featured?'color:#d97706':''}">${svg(I.star,16)}</button>
       <button class="btn btn-icon btn-ghost btn-sm" onclick="productHistory('${p.id}')" title="تفاصيل وحركة المادة">${svg(I.report,16)}</button>
       <button class="btn btn-icon btn-ghost btn-sm" onclick="printLabel('${p.id}')" title="طباعة ملصق">${svg(I.print,16)}</button>
@@ -2376,7 +2376,32 @@ function renderProducts(){
 /* ===== أزرار بطاقة المنتج الأربعة (تحكّم العرض في المتجر) ===== */
 function toggleHidden(id){const p=DB.products.find(x=>x.id===id);if(!p)return;p.hidden=!p.hidden;save();if(typeof cloudPutProduct==='function')cloudPutProduct(p);renderProducts();toast(p.hidden?'أُخفي المنتج عن الزبائن':'صار المنتج ظاهراً للزبائن','ok');}
 function toggleSoldOut(id){const p=DB.products.find(x=>x.id===id);if(!p)return;p.soldOut=!p.soldOut;save();if(typeof cloudPutProduct==='function')cloudPutProduct(p);renderProducts();toast(p.soldOut?'عُلّم المنتج: غير متوفر':'أُلغي تعليم «غير متوفر»','ok');}
-function setFakeDisc(id){const p=DB.products.find(x=>x.id===id);if(!p)return;const cur=p.fakeDisc||0;const v=prompt('نسبة الخصم الوهمي % (للعرض فقط — لا تغيّر السعر الحقيقي). اكتب 0 للإلغاء:',cur);if(v===null)return;let n=Math.round(Number(String(v).replace(/[^0-9.]/g,''))||0);n=Math.max(0,Math.min(95,n));p.fakeDisc=n;save();if(typeof cloudPutProduct==='function')cloudPutProduct(p);renderProducts();toast(n>0?('خصم وهمي '+n+'% (عرض فقط — السعر لم يتغيّر)'):'أُلغي الخصم الوهمي','ok');}
+function setFakeDisc(id){const p=DB.products.find(x=>x.id===id);if(!p)return;const cur=p.fakeDisc||0;const on=(cur>0)&&(p.fakeDiscOn!==false);window._fdRealP=Number(p.price)||0;
+  modal({title:'خصم وهمي (دعائي)',body:`
+    <p style="font-size:13px;color:var(--muted);line-height:1.85;margin:0 0 13px">يعرض للزبون سعراً مشطوباً أعلى ونسبة خصم، <b>دون تغيير السعر الحقيقي</b> إطلاقاً. النسبة تبقى محفوظة حتى لو أخفيتها، فتشغّلها وتطفئها متى شئت.</p>
+    <div class="field"><label>نسبة الخصم الوهمي %</label>
+      <input class="inp" id="fd_pct" type="number" min="0" max="95" step="1" value="${cur||''}" placeholder="مثال: 20" oninput="fdPreview()"></div>
+    <div id="fd_preview" style="font-size:13.5px;font-weight:700;margin:8px 0 15px;min-height:20px;color:var(--primary-d)"></div>
+    <label style="display:flex;align-items:center;gap:11px;cursor:pointer;font-size:14px;font-weight:600;background:var(--bg);border:1px solid var(--line);border-radius:11px;padding:12px 14px">
+      <input type="checkbox" id="fd_on" ${on?'checked':''} style="width:21px;height:21px;flex:0 0 auto"> إظهاره للزبون الآن في المتجر</label>`,
+    actions:[
+      {label:'حفظ',primary:true,icon:I.check,fn:()=>{
+        let n=Math.round(Number(document.getElementById('fd_pct').value)||0);n=Math.max(0,Math.min(95,n));
+        const show=document.getElementById('fd_on').checked;
+        p.fakeDisc=n;p.fakeDiscOn=(n>0)?show:false;
+        save();if(typeof cloudPutProduct==='function')cloudPutProduct(p);renderProducts();
+        let msg;if(n<=0)msg='أُلغي الخصم الوهمي';else if(p.fakeDiscOn)msg='خصم وهمي '+n+'% — ظاهر للزبون الآن';else msg='خصم وهمي '+n+'% — محفوظ ومخفي عن الزبون';
+        toast(msg,'ok');return true;
+      }},
+      {label:'إلغاء',fn:()=>true}
+    ]});
+  setTimeout(fdPreview,30);
+}
+function fdPreview(){const inp=document.getElementById('fd_pct'),box=document.getElementById('fd_preview');if(!inp||!box)return;
+  let n=Math.max(0,Math.min(95,Math.round(Number(inp.value)||0)));const real=Number(window._fdRealP)||0;
+  if(n>0&&real>0){const old=Math.round(real/(1-n/100));box.innerHTML=`معاينة الزبون: <s style="color:#94A3B8;font-weight:600">${money(old)}</s> &nbsp;<b>${money(real)} ${CUR()}</b> &nbsp;<span style="background:#FCE7EE;color:#E11D48;border-radius:6px;padding:2px 7px">-${n}%</span>`;}
+  else box.innerHTML='<span style="color:var(--muted);font-weight:500">لا خصم وهمي — السعر يظهر عادياً.</span>';
+}
 function toggleFeatured(id){const p=DB.products.find(x=>x.id===id);if(!p)return;p.featured=!p.featured;save();if(typeof cloudPutProduct==='function')cloudPutProduct(p);renderProducts();toast(p.featured?'أُضيف للمميّزة (يظهر أعلى المتجر)':'أُزيل من المميّزة','ok');}
 const UNITS=['قطعة','كرتون','علبة','كيس','متر','متر مربع','كيلو','غرام','لتر','لفة','صندوق','طن','حبة','طقم','زوج','رول'];
 let _curProdUnits=[];
