@@ -913,6 +913,7 @@ html.dark .cart-row2 .cr-qty button{background:var(--surface-2);border-color:var
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 <script>
 /* ====================== أيقونات ====================== */
@@ -989,11 +990,12 @@ const FB_CONFIG={
   messagingSenderId:"235682599633",
   appId:"1:235682599633:web:2c605dadb51cdafd84abf0"
 };
-let FS=null, AUTH=null, _applyingRemote=false, _metaTs=0, _firstProdSync=true, _firstMetaSync=true, _pendingRefresh=false;
+let FS=null, AUTH=null, FUNCTIONS=null, _applyingRemote=false, _metaTs=0, _firstProdSync=true, _firstMetaSync=true, _pendingRefresh=false;
 try{
   if(window.firebase&&FB_CONFIG.apiKey){
     firebase.initializeApp(FB_CONFIG);
     FS=firebase.firestore();
+    try{FUNCTIONS=firebase.functions();}catch(e){console.warn('Functions init',e);}
     try{AUTH=firebase.auth();}catch(e){console.warn('Auth init',e);}
     /* عند تغيّر حالة الدخول السحابي (مثل الدخول بالرمز مع مصادقة خلفية):
        أعد جلب البيانات الحسّاسة التي كانت محجوبة قبل المصادقة */
@@ -3431,6 +3433,7 @@ function showInvoice(sale){
     actions:[{label:'طباعة / PDF',primary:true,icon:I.print,fn:()=>{printEl('invPrint');return false;}},
       {label:'طباعة حرارية',icon:I.print,fn:()=>{thermalReceipt(sale,{kind:'sale'});return false;}},
       {label:'إرسال واتساب',icon:I.wa,fn:()=>{waInvoice(sale);return false;}},
+      {label:'إرسال تلقائي (قالب)',icon:I.wa,fn:()=>{waInvoiceTemplate(sale);return false;}},
       (sale.id&&DB.sales.some(s=>s.id===sale.id))?{label:'حذف',icon:I.trash,fn:()=>{deleteSale(sale.id);return false;}}:null,
       {label:'إغلاق',fn:()=>true}].filter(Boolean)});
 }
@@ -3527,6 +3530,32 @@ function waInvoice(sale){
     let fb=null;try{fb=invoiceCanvas(sale);}catch(e){}
     if(fb&&fb.toBlob){fb.toBlob(b=>shareBlob(b),'image/png');}else openChat();
   });
+}
+/* ---------- إرسال الفاتورة تلقائياً عبر قالب واتساب (Cloud API) ---------- */
+/* اسم القالب ولغته يُضبطان من صفحة الإعدادات داخل التطبيق */
+function waTpl(){return (DB.settings.waTemplate||'invoice');}
+function waLang(){return (DB.settings.waLang||'ar');}
+/* ترتيب القيم أدناه يجب أن يطابق متغيّرات قالبك {{1}} {{2}} {{3}} ... */
+function waTemplateParams(sale){
+  return [
+    sale.customerName||'عميل',            // {{1}}
+    String(sale.no),                       // {{2}}
+    money(sale.total)+' '+CUR(),           // {{3}}
+    money(sale.remaining||0)+' '+CUR(),    // {{4}}  احذف هذا السطر إن لم يكن في قالبك
+  ];
+}
+async function waInvoiceTemplate(sale){
+  if(!FUNCTIONS){toast('المزامنة السحابية غير مهيأة','err');return;}
+  let phone='';
+  if(sale.customerId){const c=DB.customers.find(x=>x.id===sale.customerId);if(c)phone=custWa(c);}
+  if(!phone){toast('لا يوجد رقم واتساب مسجّل لهذا العميل','err');return;}
+  toast('جارٍ إرسال الفاتورة عبر واتساب...','ok');
+  try{
+    const call=FUNCTIONS.httpsCallable('sendInvoiceTemplate');
+    const res=await call({to:phone,template:waTpl(),lang:waLang(),params:waTemplateParams(sale)});
+    if(res&&res.data&&res.data.ok)toast('تم إرسال الفاتورة عبر واتساب ✅','ok');
+    else toast('فشل الإرسال: '+((res&&res.data&&res.data.error)||'خطأ غير معروف'),'err');
+  }catch(e){toast('تعذّر الإرسال: '+(e.message||e),'err');}
 }
 function waVoucher(id){
   const v=DB.vouchers.find(x=>x.id===id);if(!v)return;
@@ -6089,6 +6118,8 @@ function vSettings(v){
       </div>
       <label style="display:flex;align-items:center;gap:8px;margin-top:6px;font-size:14px;cursor:pointer"><input type="checkbox" id="set_sound" ${DB.settings.sound!==false?'checked':''} onchange="if(this.checked)playSound('success')" style="width:18px;height:18px"> تفعيل الأصوات التفاعلية (فوترة، حذف، تنبيهات)</label>
       <label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:14px;cursor:pointer"><input type="checkbox" id="set_wabiz" ${DB.settings.waBusiness?'checked':''} style="width:18px;height:18px"> أستخدم واتساب Business (محاولة الفتح فيه مباشرة على أندرويد)</label>
+      <div class="field"><label>اسم قالب الفاتورة (WhatsApp API)</label><input class="inp" id="set_watpl" placeholder="مثال: invoice" value="${esc(DB.settings.waTemplate||'invoice')}"></div>
+      <div class="field"><label>لغة القالب (كما اعتُمدت)</label><input class="inp" id="set_walang" placeholder="مثال: ar أو en_US" value="${esc(DB.settings.waLang||'ar')}"></div>
       <div class="field" style="grid-column:1/-1"><label>رابط صورة خلفية الواجهة (اختياري)</label><input class="inp" id="set_hero" placeholder="https://..." value="${esc(DB.settings.heroImage||'')}"></div>
       <div class="field" style="grid-column:1/-1"><label>معلومات عنا (تظهر في القائمة)</label><textarea class="inp" id="set_about" style="min-height:80px">${esc(DB.settings.about||'')}</textarea></div>
       <div class="field" style="grid-column:1/-1"><label>الشروط والاستخدام</label><textarea class="inp" id="set_terms" style="min-height:80px">${esc(DB.settings.terms||'')}</textarea></div>
@@ -6210,6 +6241,8 @@ function saveSettings(){
   DB.settings.whatsapp=val('set_wa').trim();
   DB.settings.managerWa=val('set_managerwa').trim();
   DB.settings.waBusiness=!!(document.getElementById('set_wabiz')||{}).checked;
+  {const _wt=document.getElementById('set_watpl');if(_wt)DB.settings.waTemplate=_wt.value.trim()||'invoice';
+   const _wl=document.getElementById('set_walang');if(_wl)DB.settings.waLang=_wl.value.trim()||'ar';}
   DB.settings.brands=val('set_brands').split(/[،,]/).map(s=>s.trim()).filter(Boolean);
   const _ce=document.getElementById('set_cloudemail');if(_ce)DB.settings.cloudEmail=_ce.value.trim();
   const _cp=document.getElementById('set_cloudpass');if(_cp)DB.settings.cloudPass=_cp.value;
@@ -7589,14 +7622,6 @@ function submitOrder(ctx){
     proof:(window._payProofs&&window._payProofs[0])||_payProof||'',proofs:(window._payProofs||[]).slice(),voice:ctx.voice||_voiceNote||'',status:'pending'};
   DB.orders=DB.orders||[];DB.orders.push(o);save();
   cloudAddOrder(o).catch(()=>{});
-  // إرسال فاتورة واتساب تلقائياً عبر Cloudflare Worker
-  try{
-    fetch("https://sadagha-wa.yahyaazawadi91.workers.dev",{
-      method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({name:o.name,cc:o.cc,phone:o.phone,no:o.no,total:o.total,date:o.date})
-    }).catch(()=>{});
-  }catch(e){}
   setTimeout(()=>{try{watchMyOrders();}catch(e){}},400);
   setTimeout(()=>orderReviewScreen(o),80);
   return true;
