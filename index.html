@@ -7589,6 +7589,14 @@ function submitOrder(ctx){
     proof:(window._payProofs&&window._payProofs[0])||_payProof||'',proofs:(window._payProofs||[]).slice(),voice:ctx.voice||_voiceNote||'',status:'pending'};
   DB.orders=DB.orders||[];DB.orders.push(o);save();
   cloudAddOrder(o).catch(()=>{});
+  // إرسال فاتورة واتساب تلقائياً عبر Cloudflare Worker
+  try{
+    fetch("https://sadagha-wa.yahyaazawadi91.workers.dev",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({name:o.name,cc:o.cc,phone:o.phone,no:o.no,total:o.total,date:o.date})
+    }).catch(()=>{});
+  }catch(e){}
   setTimeout(()=>{try{watchMyOrders();}catch(e){}},400);
   setTimeout(()=>orderReviewScreen(o),80);
   return true;
